@@ -1,13 +1,14 @@
-import { getESPN } from './core.js'
+import { getESPN, currentSeason } from './core.js'
 
 export async function teamsRouter(app: any) {
   app.get('/api/teams', async (req: any, res: any) => {
-    const r = await getESPN('/members', req)
-    res.json({ ok: r.ok, data: r.json || r.text })
+    res.json({ ok: false, error: 'league_id_required', message: 'Use /api/espn/league/:id/teams.' })
   })
   app.get('/api/teams/:leagueId', async (req: any, res: any) => {
     const lid = req.params.leagueId
-    const r = await getESPN('/lg/' + lid + '/teams?view=mTeam', req)
-    res.json({ ok: r.ok, data: r.json || r.text })
+    const season = Number(req.query.season) || currentSeason()
+    const r = await getESPN('/lg/' + lid + '/teams', req)
+    if (!r.ok) return res.status(r.error === 'private_league' ? 401 : 404).json({ ok: false, error: r.error, message: r.message })
+    res.json({ ok: true, season, data: r.json })
   })
 }

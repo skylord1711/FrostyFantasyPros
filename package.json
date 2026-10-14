@@ -7,7 +7,8 @@
     "build:server": "esbuild server/src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=server/dist/index.mjs",
     "build:client": "npm --prefix client install && npm --prefix client run build",
     "build": "npm run build:server && npm run build:client",
-    "start": "npm --prefix server start"
+    "start": "npm run build:server && node server/dist/index.mjs",
+    "dev": "npm run build:server && node --watch server/dist/index.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "main": "src/index.js",
+  "main": "dist/index.mjs",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
+    "start": "node dist/index.mjs",
+    "dev": "node --watch dist/index.mjs",
     "test": "node smoke.mjs"
   },
   "dependencies": {

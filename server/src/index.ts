@@ -1,5 +1,8 @@
 import express from 'express'
 import cors from 'cors'
+import path from 'path'
+import fs from 'fs'
+import { fileURLToPath } from 'url'
 import { complete } from './ai/index.js'
 import { buildTutorSystemPrompt, buildTutorUserPrompt } from './ai/prompts.js'
 import { buildLearnerContext } from './ai/memory.js'
@@ -13,6 +16,7 @@ import { teamsRouter } from './teams.js'
 import { rostersRouter } from './rosters.js'
 import { activityRouter } from './activity.js'
 import { espnAuthRouter } from './auth-espn.js'
+import { espnBrowserAuthRouter } from './browser-auth.js'
 
 const app = express()
 app.use(cors())
@@ -63,9 +67,16 @@ teamsRouter(app)
 rostersRouter(app)
 activityRouter(app)
 espnAuthRouter(app)
+espnBrowserAuthRouter(app)
 
 const port = process.env.PORT || 4700
 if (!process.env.VERCEL) {
+  // Local mode: serve the built PWA alongside the API so `npm start` just works.
+  const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client/dist')
+  if (fs.existsSync(distDir)) {
+    app.use(express.static(distDir))
+    app.get(/^(?!\/api).*/, (_req: any, res: any) => res.sendFile(path.join(distDir, 'index.html')))
+  }
   app.listen(port, () => {
     console.log('frosty server on :' + port)
   })

@@ -1,130 +1,155 @@
 import React from 'react'
 import { api } from './api.js'
-import { getDeviceAuth, setDeviceAuth, buildLink, clearDeviceAuth } from './session.js'
+import {
+  getDeviceAuth, hasDeviceAuth,
+  getLeagues, removeLeague,
+  isOnboarded
+} from './session.js'
+import Onboarding from './Onboarding.jsx'
+import SignIn from './SignIn.jsx'
+
+const TABS = ['Leagues', 'Standings', 'Teams', 'AI']
 
 export default function App() {
-  const [tab, setTab] = React.useState('Connect')
-  const [q, setQ] = React.useState('best waiver RB this week?')
+  const [onboarded, setOnb] = React.useState(isOnboarded())
+  const [tab, setTab] = React.useState('Leagues')
+  const [leagues, setLeaguesState] = React.useState(getLeagues())
+  const [activeId, setActiveId] = React.useState((getLeagues()[0] || {}).id || '')
+  const [auth, setAuth] = React.useState(getDeviceAuth())
+
+  // data state
+  const [basics, setBasics] = React.useState(null)
+  const [loading, setLoading] = React.useState(false)
+
+  // AI state
+  const [q, setQ] = React.useState('Who should I start this week?')
   const [res, setRes] = React.useState('')
-  const [swid, setSwid] = React.useState('')
-  const [espnS2, setEspnS2] = React.useState('')
-  const [link, setLink] = React.useState('')
-  const [creds, setCreds] = React.useState(false)
-  const [picks, setPicks] = React.useState(null)
-  const [data, setData] = React.useState(null)
-  const [authInfo, setAuthInfo] = React.useState(null)
-  const [leagues, setLeagues] = React.useState(null)
-  const [selected, setSelected] = React.useState([])
-  const ask = async () => {
-    const r = await api.tutor(q, { level: 'mixed' })
-    setRes(r.answer || r.error)
-  }
+
+  const refreshLeagues = () => setLeaguesState(getLeagues())
+
   React.useEffect(() => {
-    try {
-      const hash = window.location.hash
-      if (hash.startsWith('#/connect')) {
-        const u = new URL(hash.replace('#/connect',''), window.location.origin + '/')
-        const s = u.searchParams.get('swid')
-        const e = u.searchParams.get('espnS2')
-        if (s) setSwid(s)
-        if (e) setEspnS2(e)
-        if (s || e) {
-          setDeviceAuth({ swid: s||'', espnS2: e||'' })
-          api.setEspnCreds(s||'', e||'').then(x=>setCreds(x.ok))
-          setTab('Connect')
-        }
-      }
-    } catch (e) {}
-    api.espnCreds().then(x=>setCreds(x.has))
-    api.nflPicks().then(x=>setPicks(x))
-    const da = getDeviceAuth()
-    if (da.swid) setSwid(da.swid)
-    if (da.espnS2) setEspnS2(da.espnS2)
-  }, [])
-  const save = async () => {
-    setDeviceAuth({ swid, espnS2 })
-    await api.setEspnCreds(swid, espnS2)
-    setCreds(true)
+    if (!activeId && leagues.length) setActiveId(leagues[0].id)
+  }, [leagues, activeId])
+
+  // Load active league standings
+  const activeLeague = leagues.find((l) => String(l.id) === String(activeId))
+  React.useEffect(() => {
+    if (!activeId) { setBasics(null); return }
+    setLoading(true)
+    const season = activeLeague?.season
+    api.leagueBasics(activeId, season).then((r) => {
+      setBasics(r && r.ok ? r.league : { error: (r && r.message) || 'Could not load league.' })
+      setLoading(false)
+    }).catch(() => { setBasics({ error: 'Network error.' }); setLoading(false) })
+  }, [activeId, activeLeague?.season])
+
+  const onSignedIn = (list) => {
+    setAuth(getDeviceAuth())
+    refreshLeagues()
+    if (list && list[0]) setActiveId(String(list[0].id))
   }
-  const clear = async () => {
-    clearDeviceAuth()
-    setSwid(''); setEspnS2('')
-    await api.clearEspnCreds()
-    setCreds(false)
+
+  const ask = async () => {
+    const r = await api.tutor(q, { level: 'mixed', league: activeLeague ? activeLeague.name : undefined })
+    setRes(r.answer || r.error || 'No response.')
   }
-  const gen = () => {
-    setLink(buildLink({ swid, espnS2 }))
+
+  if (!onboarded) {
+    return <Onboarding onFinish={() => setOnb(true)} onLeaguesChange={refreshLeagues} />
   }
-  const load = async (fn, ...args) => {
-    const r = await fn(...args)
-    setData(r)
-  }
-  const startAuth = async () => {
-    const r = await api.authEspnStart()
-    setAuthInfo(r)
-    if (r.redirect) window.open(r.redirect, '_blank')
-  }
-  const completeAuth = async () => {
-    const r = await api.authEspnCallback(swid, espnS2)
-    setCreds(r.ok && r.has)
-    setDeviceAuth({ swid, espnS2 })
-  }
-  const discover = async () => {
-    const r = await api.authEspnComplete(swid, espnS2)
-    setLeagues(r.leagues)
-  }
-  const toggle = (id) => {
-    setSelected(s => s.includes(id) ? s.filter(x=>x!==id) : [...s, id])
-  }
+
+  const teams = (basics && basics.teams) || []
+  const standings = [...teams].sort((a, b) => (b.wins - a.wins) || (b.pointsFor - a.pointsFor))
+
   return (
-    <div style={{padding:16,fontFamily:'system-ui'}}>
-      <h2>Frosty Fantasy Pros</h2>
-      <div style={{marginBottom:12,flexWrap:'wrap'}}>
-        {['Connect','Dashboard','Teams','AI'].map(t=>(
-          <button key={t} onClick={()=>setTab(t)} style={{marginRight:8,padding:6,background:tab===t?'#ddd':'#eee'}}>{t}</button>
+    <div className="app">
+      <div className="hdr">
+        <div className="brand"><span className="flake">❄</span> Frosty Fantasy Pros</div>
+        <div className="row">
+          <span className="muted"><span className={'dot ' + (hasDeviceAuth() ? 'on' : 'off')} />{hasDeviceAuth() ? 'ESPN linked' : 'Not linked'}</span>
+        </div>
+      </div>
+
+      {leagues.length > 0 && (
+        <div className="row" style={{ marginBottom: 8 }}>
+          <select value={activeId} onChange={(e) => setActiveId(e.target.value)} style={{ maxWidth: 320 }}>
+            {leagues.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </div>
+      )}
+
+      <div className="tabs">
+        {TABS.map((t) => (
+          <button key={t} className={'tab' + (tab === t ? ' active' : '')} onClick={() => setTab(t)}>{t}</button>
         ))}
       </div>
-      {tab==='Connect' && (
+
+      {tab === 'Leagues' && (
         <div>
-          <div>Sign in with ESPN/Disney (best-apps style)</div>
-          <button onClick={startAuth} style={{padding:6,marginRight:4}}>Sign in with ESPN/Disney</button>
-          <button onClick={discover} style={{padding:6,marginRight:4}}>Discover Leagues</button>
-          {authInfo && (<pre style={{whiteSpace:'pre-wrap',fontSize:'12px'}}>{JSON.stringify(authInfo,null,2)}</pre>)}
-          {leagues && (<div style={{marginTop:8,whiteSpace:'pre-wrap',fontSize:'12px'}}>{typeof leagues==='string'?leagues:JSON.stringify(leagues,null,2)}</div>)}
-          <div style={{marginTop:8}}>Or paste SWID + espn_s2:</div>
-          <input placeholder='SWID' value={swid} onChange={e=>setSwid(e.target.value)} style={{width:'40%',padding:6,marginRight:4}}/>
-          <input placeholder='ESPN_S2' value={espnS2} onChange={e=>setEspnS2(e.target.value)} style={{width:'40%',padding:6,marginRight:4}}/>
-          <button onClick={completeAuth} style={{padding:6,marginRight:4}}>Complete Login</button>
-          <button onClick={save} style={{padding:6,marginRight:4}}>Save</button>
-          <button onClick={clear} style={{padding:6,marginRight:4}}>Clear</button>
-          <button onClick={gen} style={{padding:6}}>Gen Phone Link</button>
-          <div>Creds on server: {creds ? 'yes' : 'no'}</div>
-          {link && (<div style={{marginTop:8,wordBreak:'break-all'}}><small>{link}</small></div>)}
+          <SignIn onDone={onSignedIn} />
+
+          <div className="card">
+            <h3>Your leagues</h3>
+            {leagues.length === 0 && <div className="muted">No leagues yet. Sign in with ESPN above to load them.</div>}
+            <div className="list">
+              {leagues.map((l) => (
+                <div className="league" key={l.id}>
+                  <div className="avatar">🏈</div>
+                  <div className="grow">
+                    <div className="nm">{l.name}</div>
+                    <div className="meta">ID {l.id}{l.season ? ' · ' + l.season : ''}{l.teamCount ? ' · ' + l.teamCount + ' teams' : ''}</div>
+                  </div>
+                  <button className="ghost" onClick={() => { setActiveId(l.id); setTab('Standings') }}>Open</button>
+                  <button className="ghost" onClick={() => { const list = removeLeague(l.id); setLeaguesState(list); if (String(activeId) === String(l.id)) setActiveId((list[0] || {}).id || '') }}>Remove</button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
-      {tab==='Dashboard' && (
-        <div>
-          <button onClick={()=>load(api.nflPicks)}>Picks</button>
-          <button onClick={()=>load(api.power)} style={{marginLeft:4}}>Power</button>
-          <button onClick={()=>load(api.waivers)} style={{marginLeft:4}}>Waivers</button>
-          <button onClick={()=>load(api.trades)} style={{marginLeft:4}}>Trades</button>
-          <pre style={{whiteSpace:'pre-wrap',marginTop:8}}>{JSON.stringify(data||picks,null,2)}</pre>
+
+      {tab === 'Standings' && (
+        <div className="card">
+          <h3>{activeLeague ? activeLeague.name : 'Standings'}</h3>
+          {loading && <div className="muted">Loading…</div>}
+          {!loading && basics && basics.error && <div className="msg err">{basics.error}</div>}
+          {!loading && basics && !basics.error && standings.length === 0 && <div className="muted">No teams returned.</div>}
+          {!loading && basics && !basics.error && standings.map((t, i) => (
+            <div className="team" key={t.id}>
+              <div className="rank">{i + 1}</div>
+              {t.logo ? <img src={t.logo} alt="" /> : <div className="avatar">🏈</div>}
+              <div className="nm">{t.name}</div>
+              <div className="rec">{t.wins}-{t.losses}{t.ties ? '-' + t.ties : ''}</div>
+              <div className="rec" style={{ width: 70, textAlign: 'right' }}>{Math.round(t.pointsFor)} PF</div>
+            </div>
+          ))}
+          {!activeId && !loading && <div className="muted">Sign in with ESPN to load a league.</div>}
         </div>
       )}
-      {tab==='Teams' && (
-        <div>
-          <button onClick={()=>load(api.teams)}>Teams</button>
-          <input placeholder='League ID' id='lid' style={{marginLeft:4,padding:4,width:'120px'}}/>
-          <button onClick={()=>{const v=document.getElementById('lid').value; if(v) load(api.teams,v)}} style={{marginLeft:4}}>Teams by League</button>
-          <button onClick={()=>{const v=document.getElementById('lid').value; if(v) load(api.rosters,v)}} style={{marginLeft:4}}>Rosters</button>
-          <pre style={{whiteSpace:'pre-wrap',marginTop:8}}>{JSON.stringify(data,null,2)}</pre>
+
+      {tab === 'Teams' && (
+        <div className="card">
+          <h3>Teams {activeLeague ? '· ' + activeLeague.name : ''}</h3>
+          {loading && <div className="muted">Loading…</div>}
+          {!loading && teams.length === 0 && <div className="muted">No teams loaded. Sign in with ESPN in the Leagues tab.</div>}
+          {!loading && teams.map((t) => (
+            <div className="team" key={t.id}>
+              {t.logo ? <img src={t.logo} alt="" /> : <div className="avatar">🏈</div>}
+              <div className="nm">{t.name}</div>
+              <div className="rec">{t.wins}-{t.losses}{t.ties ? '-' + t.ties : ''}</div>
+            </div>
+          ))}
         </div>
       )}
-      {tab==='AI' && (
-        <div>
-          <input value={q} onChange={e=>setQ(e.target.value)} style={{width:'80%',padding:8}}/>
-          <button onClick={ask} style={{marginLeft:8,padding:8}}>Ask AI</button>
-          <pre style={{whiteSpace:'pre-wrap',marginTop:12}}>{res}</pre>
+
+      {tab === 'AI' && (
+        <div className="card">
+          <h3>Frosty AI</h3>
+          <div className="row">
+            <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') ask() }} />
+            <button className="primary" onClick={ask}>Ask</button>
+          </div>
+          {res && <pre style={{ marginTop: 12 }}>{res}</pre>}
         </div>
       )}
     </div>

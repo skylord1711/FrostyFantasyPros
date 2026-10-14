@@ -1,42 +1,45 @@
+import { getDeviceAuth } from './session.js'
+
 const BASE = '/api'
 
+function headers(extra) {
+  const h = { 'Content-Type': 'application/json', ...(extra || {}) }
+  const a = getDeviceAuth()
+  if (a.swid) h['X-Fantasy-SWID'] = a.swid
+  if (a.espnS2) h['X-Fantasy-ESPN-S2'] = a.espnS2
+  return h
+}
+
+const get = (path) => fetch(BASE + path, { headers: headers() }).then((r) => r.json())
+const post = (path, body) => fetch(BASE + path, { method: 'POST', headers: headers(), body: JSON.stringify(body || {}) }).then((r) => r.json())
+const del = (path) => fetch(BASE + path, { method: 'DELETE', headers: headers() }).then((r) => r.json())
+
 export const api = {
-  health: () => fetch(BASE + '/health').then(r=>r.json()),
-  tutor: (question, context) => fetch(BASE + '/ai/tutor', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, context })
-  }).then(r=>r.json()),
-  espnCreds: () => fetch(BASE + '/espn/credentials').then(r=>r.json()),
-  setEspnCreds: (swid, espnS2) => fetch(BASE + '/espn/credentials', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ swid, espnS2 })
-  }).then(r=>r.json()),
-  clearEspnCreds: () => fetch(BASE + '/espn/credentials', { method: 'DELETE' }).then(r=>r.json()),
-  nflPicks: (week) => fetch(BASE + '/nfl/picks' + (week ? ('?week='+week) : '')).then(r=>r.json()),
-  leagues: () => fetch(BASE + '/espn/leagues').then(r=>r.json()),
-  rankings: (p='espn') => fetch(BASE + '/rankings/' + p).then(r=>r.json()),
-  trades: () => fetch(BASE + '/trades').then(r=>r.json()),
-  insights: () => fetch(BASE + '/insights').then(r=>r.json()),
-  waivers: () => fetch(BASE + '/waivers').then(r=>r.json()),
-  wdis: () => fetch(BASE + '/wdis').then(r=>r.json()),
-  power: () => fetch(BASE + '/power').then(r=>r.json()),
-  matchups: (week) => fetch(BASE + '/matchups' + (week ? ('?week='+week) : '')).then(r=>r.json()),
-  boxscores: (week) => fetch(BASE + '/boxscores' + (week ? ('?week='+week) : '')).then(r=>r.json()),
-  teams: (lid) => fetch(BASE + (lid ? '/teams/'+lid : '/teams')).then(r=>r.json()),
-  rosters: (lid) => fetch(BASE + '/rosters/' + lid).then(r=>r.json()),
-  activity: (lid) => fetch(BASE + '/activity/' + lid).then(r=>r.json()),
-  authEspnStart: () => fetch(BASE + '/auth/espn/start').then(r=>r.json()),
-  authEspnCallback: (swid, espnS2) => fetch(BASE + '/auth/espn/callback', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ swid, espnS2 })
-  }).then(r=>r.json()),
-  authEspnComplete: (swid, espnS2) => fetch(BASE + '/auth/espn/complete', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ swid, espnS2 })
-  }).then(r=>r.json()),
-  authEspnLeagues: () => fetch(BASE + '/auth/espn/leagues').then(r=>r.json())
+  health: () => get('/health'),
+  tutor: (question, context) => post('/ai/tutor', { question, context }),
+
+  // ESPN connection / league sync
+  espnCreds: () => get('/espn/credentials'),
+  setEspnCreds: (swid, espnS2) => post('/espn/credentials', { swid, espnS2 }),
+  clearEspnCreds: () => del('/espn/credentials'),
+  authStart: () => get('/auth/espn/start'),
+  authVerify: (swid, espnS2, input) => post('/auth/espn/verify', { swid, espnS2, input }),
+  authBrowserStart: () => post('/auth/espn/browser/start'),
+  authBrowserStatus: (session) => get('/auth/espn/browser/status' + (session ? ('?session=' + encodeURIComponent(session)) : '')),
+  authBrowserCancel: () => post('/auth/espn/browser/cancel'),
+  leagueBasics: (id, season) => get('/espn/league/' + id + '/basics' + (season ? ('?season=' + season) : '')),
+
+  // Feature stubs (wired, real data lands as engines are rebuilt)
+  nflPicks: (week) => get('/nfl/picks' + (week ? ('?week=' + week) : '')),
+  rankings: (p = 'espn') => get('/rankings/' + p),
+  trades: () => get('/trades'),
+  insights: () => get('/insights'),
+  waivers: () => get('/waivers'),
+  wdis: () => get('/wdis'),
+  power: () => get('/power'),
+  matchups: (week) => get('/matchups' + (week ? ('?week=' + week) : '')),
+  boxscores: (week) => get('/boxscores' + (week ? ('?week=' + week) : '')),
+  teams: (lid) => get(lid ? '/teams/' + lid : '/teams'),
+  rosters: (lid) => get('/rosters/' + lid),
+  activity: (lid) => get('/activity/' + lid)
 }

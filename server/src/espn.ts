@@ -38,7 +38,11 @@ export async function espnRouter(app: any) {
     res.json({ ok: true })
   })
   app.post('/api/espn/login', (req: Request, res: Response) => {
-    // placeholder - real login can be added later; keep safe
-    res.status(501).json({ error: 'not_implemented' })
+    // ESPN blocks programmatic password login (captcha on its identity API),
+    // so there is no server-side "sign in". Use cookies or a public league URL.
+    res.status(400).json({
+      error: 'use_cookies_or_url',
+      message: 'ESPN does not allow password sign-in from apps. Add a public league by URL/ID, or paste your SWID + espn_s2 cookies for private leagues.'
+    })
   })
 }
