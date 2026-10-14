@@ -599,6 +599,19 @@ with a bogus cookie. BLOCKERS: serverless needs a KV store to persist -> user mu
 Vercel KV (injects KV_REST_API_* env vars) then redeploy; without it Vercel's read-only FS can't store.
 Also ESPN login from Vercel's datacenter IP may hit captcha (works from home IP). Set env vars
 FFP_SECRET + CRON_SECRET. Committed + deployed this round.
+DEPLOY (this round): https://frosty-fantasy-pros.vercel.app (prod). Set env FFP_SECRET + CRON_SECRET
+(production). Provisioned Upstash for Redis via `vercel integration add upstash/upstash-kv
+--non-interactive` (resource upstash-kv-charcoal-drum; injected KV_REST_API_URL/KV_REST_API_TOKEN +
+KV_URL/REDIS_URL into Production/Preview/Development; also wrote .env.local which Vercel added to
+.gitignore as .env*). Redeployed. SEE: plan is Hobby => Vercel Cron limited to once/day (schedule
+0 13 * * *); the client also calls POST /api/sync on app open so it stays fresh. VERIFIED LIVE on prod:
+/api/health 200; seeded a self-test event directly in the Upstash REST store and the DEPLOYED
+/api/events read it back (=> persistence + KV wiring work on Vercel); POST /api/sync with a seeded
+stored account returned decrypt_failed (=> it reads the stored account + runs the crypto path);
+/api/cron/sync without the secret returned 401 (=> CRON_SECRET guard works). Cleaned up the test keys.
+ONLY UNKNOWN: the real ESPN/Disney login from Vercel's datacenter IP (may hit ESPN captcha) — untestable
+without the user's real credentials; login works from a home IP. No local requirement anymore.
+
 
 
 

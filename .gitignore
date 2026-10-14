@@ -5,3 +5,4 @@ dist/
 .DS_Store
 .env
 .ffp-store.json
+.env*
