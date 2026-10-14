@@ -13,6 +13,8 @@ export default function App() {
   const [picks, setPicks] = React.useState(null)
   const [data, setData] = React.useState(null)
   const [authInfo, setAuthInfo] = React.useState(null)
+  const [leagues, setLeagues] = React.useState(null)
+  const [selected, setSelected] = React.useState([])
   const ask = async () => {
     const r = await api.tutor(q, { level: 'mixed' })
     setRes(r.answer || r.error)
@@ -67,6 +69,13 @@ export default function App() {
     setCreds(r.ok && r.has)
     setDeviceAuth({ swid, espnS2 })
   }
+  const discover = async () => {
+    const r = await api.authEspnComplete(swid, espnS2)
+    setLeagues(r.leagues)
+  }
+  const toggle = (id) => {
+    setSelected(s => s.includes(id) ? s.filter(x=>x!==id) : [...s, id])
+  }
   return (
     <div style={{padding:16,fontFamily:'system-ui'}}>
       <h2>Frosty Fantasy Pros</h2>
@@ -77,10 +86,12 @@ export default function App() {
       </div>
       {tab==='Connect' && (
         <div>
-          <div>Best-apps style: Sign in with ESPN/Disney</div>
+          <div>Sign in with ESPN/Disney (best-apps style)</div>
           <button onClick={startAuth} style={{padding:6,marginRight:4}}>Sign in with ESPN/Disney</button>
+          <button onClick={discover} style={{padding:6,marginRight:4}}>Discover Leagues</button>
           {authInfo && (<pre style={{whiteSpace:'pre-wrap',fontSize:'12px'}}>{JSON.stringify(authInfo,null,2)}</pre>)}
-          <div style={{marginTop:8}}>Or paste SWID + espn_s2 (manual):</div>
+          {leagues && (<div style={{marginTop:8,whiteSpace:'pre-wrap',fontSize:'12px'}}>{typeof leagues==='string'?leagues:JSON.stringify(leagues,null,2)}</div>)}
+          <div style={{marginTop:8}}>Or paste SWID + espn_s2:</div>
           <input placeholder='SWID' value={swid} onChange={e=>setSwid(e.target.value)} style={{width:'40%',padding:6,marginRight:4}}/>
           <input placeholder='ESPN_S2' value={espnS2} onChange={e=>setEspnS2(e.target.value)} style={{width:'40%',padding:6,marginRight:4}}/>
           <button onClick={completeAuth} style={{padding:6,marginRight:4}}>Complete Login</button>

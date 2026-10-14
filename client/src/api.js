@@ -32,5 +32,11 @@ export const api = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ swid, espnS2 })
-  }).then(r=>r.json())
+  }).then(r=>r.json()),
+  authEspnComplete: (swid, espnS2) => fetch(BASE + '/auth/espn/complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ swid, espnS2 })
+  }).then(r=>r.json()),
+  authEspnLeagues: () => fetch(BASE + '/auth/espn/leagues').then(r=>r.json())
 }
