@@ -160,6 +160,12 @@ export async function disneyRouter(app: any) {
       const raw = await discoverLeagues(result)
       leagues = await enrichLeagues(raw, result)
     } catch (e) {}
+    try {
+      const { saveAccount, syncAccount } = await import('./sync.js')
+      await saveAccount(result.swid!, result.espnS2!, leagues)
+      // Establish the baseline snapshot now so future syncs can diff trades/teams.
+      await syncAccount(result.swid!)
+    } catch (e) {}
     res.json({ ok: true, swid: result.swid, espnS2: result.espnS2, leagues })
   })
 }

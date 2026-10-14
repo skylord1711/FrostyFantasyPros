@@ -17,6 +17,7 @@ import { rostersRouter } from './rosters.js'
 import { activityRouter } from './activity.js'
 import { espnAuthRouter } from './auth-espn.js'
 import { disneyRouter } from './disney.js'
+import { syncRouter } from './sync.js'
 
 const app = express()
 app.use(cors())
@@ -68,6 +69,7 @@ rostersRouter(app)
 activityRouter(app)
 espnAuthRouter(app)
 disneyRouter(app)
+syncRouter(app)
 
 const port = process.env.PORT || 4700
 if (!process.env.VERCEL) {

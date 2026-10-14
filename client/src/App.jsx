@@ -8,7 +8,7 @@ import {
 import Onboarding from './Onboarding.jsx'
 import SignIn from './SignIn.jsx'
 
-const TABS = ['Leagues', 'Standings', 'Teams', 'AI']
+const TABS = ['Leagues', 'Standings', 'Teams', 'Activity', 'AI']
 
 export default function App() {
   const [onboarded, setOnb] = React.useState(isOnboarded())
@@ -25,7 +25,34 @@ export default function App() {
   const [q, setQ] = React.useState('Who should I start this week?')
   const [res, setRes] = React.useState('')
 
+  // server-side auto-sync state
+  const [events, setEvents] = React.useState([])
+  const [syncing, setSyncing] = React.useState(false)
+  const [lastSync, setLastSync] = React.useState(null)
+
   const refreshLeagues = () => setLeaguesState(getLeagues())
+
+  const loadEvents = () => {
+    if (!hasDeviceAuth()) return
+    api.events().then((r) => setEvents((r && r.events) || [])).catch(() => {})
+  }
+
+  const runSync = (refreshLeagues) => {
+    if (!hasDeviceAuth()) return
+    setSyncing(true)
+    api.sync(refreshLeagues).then((r) => {
+      if (r && r.ok) setLastSync(Date.now())
+    }).catch(() => {}).finally(() => {
+      loadEvents()
+      setSyncing(false)
+    })
+  }
+
+  // Auto-sync against the server (which holds the encrypted ESPN session) so
+  // trades and new teams are detected even when the app was closed.
+  React.useEffect(() => {
+    if (hasDeviceAuth()) runSync(false)
+  }, [])
 
   React.useEffect(() => {
     if (!activeId && leagues.length) setActiveId(leagues[0].id)
@@ -47,6 +74,7 @@ export default function App() {
     setAuth(getDeviceAuth())
     refreshLeagues()
     if (list && list[0]) setActiveId(String(list[0].id))
+    runSync(true)
   }
 
   const ask = async () => {
@@ -139,6 +167,36 @@ export default function App() {
               <div className="rec">{t.wins}-{t.losses}{t.ties ? '-' + t.ties : ''}</div>
             </div>
           ))}
+        </div>
+      )}
+
+      {tab === 'Activity' && (
+        <div className="card">
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0 }}>Activity</h3>
+            <button className="ghost" disabled={syncing || !hasDeviceAuth()} onClick={() => runSync(true)}>
+              {syncing ? 'Syncing…' : 'Refresh'}
+            </button>
+          </div>
+          <div className="muted" style={{ marginTop: 4 }}>
+            Frosty checks your ESPN leagues on the server, so trades and new teams show up here even when the app was closed.
+            {lastSync ? ' Last checked just now.' : ''}
+          </div>
+          {!hasDeviceAuth() && <div className="muted" style={{ marginTop: 8 }}>Sign in with ESPN to start tracking.</div>}
+          {hasDeviceAuth() && events.length === 0 && !syncing && (
+            <div className="muted" style={{ marginTop: 8 }}>No trades or new teams detected yet.</div>
+          )}
+          <div className="list" style={{ marginTop: 8 }}>
+            {events.map((e) => (
+              <div className="league" key={e.id}>
+                <div className="avatar">{e.type === 'trade' ? '🔁' : '➕'}</div>
+                <div className="grow">
+                  <div className="nm">{e.summary}</div>
+                  <div className="meta">{e.leagueName} · {new Date(e.at).toLocaleString()}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

@@ -27,6 +27,11 @@ export const api = {
   authLogin: (username, password) => post('/auth/espn/login', { username, password }),
   leagueBasics: (id, season) => get('/espn/league/' + id + '/basics' + (season ? ('?season=' + season) : '')),
 
+  // Server-side auto-sync (trades + new teams)
+  sync: (refreshLeagues) => post('/sync', { refreshLeagues: !!refreshLeagues }),
+  events: () => get('/events'),
+  clearAccount: () => del('/account'),
+
   // Feature stubs (wired, real data lands as engines are rebuilt)
   nflPicks: (week) => get('/nfl/picks' + (week ? ('?week=' + week) : '')),
   rankings: (p = 'espn') => get('/rankings/' + p),

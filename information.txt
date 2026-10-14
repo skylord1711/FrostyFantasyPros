@@ -568,5 +568,38 @@ mapping works. NOT testable without real creds: successful login + the POST leag
 (discovery is defensive/flexible). NOTE: captcha-gated from datacenter IPs, so this works when run
 locally (home IP) via `npm start`; on Vercel it may hit captcha. Committed this round.
 
+===== ROUND: server-side auto-sync (trades + new teams) + Vercel deploy =====
+USER DIRECTIVE: deploy, and DON'T make it local — it should automatically detect trades and new teams
+(match FantasyPros, which keeps your ESPN session encrypted server-side and re-syncs periodically).
+ARCHITECTURE ADDED (server-side, not device-only):
+- server/src/store.ts: persistence. Uses a Redis REST endpoint via Vercel KV / Upstash env vars
+  (KV_REST_API_URL/KV_REST_API_TOKEN or UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN); falls back
+  to a local JSON file (.ffp-store.json, gitignored) so `npm start` works with zero setup. hasStore().
+- server/src/crypto.ts: AES-256-GCM encrypt/decrypt (key = sha256(FFP_SECRET)). The user's espn_s2 is
+  stored ENCRYPTED at rest; the password is still never stored.
+- server/src/sync.ts: the engine. saveAccount()/getAccount()/getEvents(). syncAccount(swid) decrypts
+  the session, (re)discovers leagues, and per league fetches teams (fetchLeagueBasics -> mTeam) +
+  the activity feed (/lg/:id/activity/feed?view=kona_activity_feed), diffs against the stored snapshot
+  {leagueId:{teamIds,tradeKeys}}, and records FfpEvent {trade|new_team|new_league}. First sync only sets
+  the baseline (no event flood). Events capped at 300. syncAll() iterates all stored accounts.
+  Routes: GET /api/cron/sync (Vercel Cron; guarded by CRON_SECRET via Bearer or ?key=), POST /api/sync
+  (client-triggered for the signed-in account), GET /api/events, DELETE /api/account (wipe).
+- disney.ts login now saveAccount()s + runs a baseline syncAccount() so the snapshot is established
+  immediately after sign-in.
+- server/src/index.ts wires syncRouter.
+- vercel.json: added crons [{path:"/api/cron/sync", schedule:"0 13 * * *"}] (Hobby = 1/day max).
+CLIENT: api.js +sync/events/clearAccount. App.jsx: new "Activity" tab (lists detected trades/new teams
+with a Refresh button), auto-runs api.sync() on mount when signed in (so it's fresh each open), reloads
+events after sign-in. Session still kept on-device too (X-Fantasy headers) for the per-request path.
+VERIFIED: build green (server 40.2kb). Live local run: /health 200; login fake creds -> 401
+bad_credentials; /events -> {events:[]}; /sync no auth -> 400 not_signed_in; /cron/sync -> synced:0.
+Seeded a smoke account with public league 1833022 (BAFFFL Midland) and a bogus prior snapshot ->
+POST /api/sync detected 11 new teams and stored them; /api/events returned them. Public read works even
+with a bogus cookie. BLOCKERS: serverless needs a KV store to persist -> user must add Upstash Redis /
+Vercel KV (injects KV_REST_API_* env vars) then redeploy; without it Vercel's read-only FS can't store.
+Also ESPN login from Vercel's datacenter IP may hit captcha (works from home IP). Set env vars
+FFP_SECRET + CRON_SECRET. Committed + deployed this round.
+
+
 
 

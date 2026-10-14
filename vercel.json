@@ -9,6 +9,9 @@
   "buildCommand": "npm run build",
   "outputDirectory": "client/dist",
   "framework": null,
+  "crons": [
+    { "path": "/api/cron/sync", "schedule": "0 13 * * *" }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/((?!api/).*)", "destination": "/" }
