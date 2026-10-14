@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Frosty Fantasy Pros — ESPN Sync",
+  "version": "1.0.0",
+  "description": "One click: sends your ESPN fantasy session to Frosty Fantasy Pros (private league support).",
+  "permissions": ["cookies", "activeTab"],
+  "host_permissions": ["*://*.espn.com/*", "https://frosty-fantasy-pros.vercel.app/*"],
+  "action": {
+    "default_title": "Send ESPN session to Frosty",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "128": "icon128.png"
+  }
+}

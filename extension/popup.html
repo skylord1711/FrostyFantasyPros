@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; width: 300px; padding: 14px; background: #0b1220; color: #e6edf7; }
+    h1 { font-size: 14px; margin: 0 0 4px; }
+    p { font-size: 12px; color: #8ba0bd; margin: 0 0 12px; line-height: 1.4; }
+    button { width: 100%; padding: 10px; border: 0; border-radius: 10px; font-weight: 700; font-size: 13px; cursor: pointer;
+             background: linear-gradient(135deg, #4da3ff, #2f7fe0); color: #081120; }
+    button:disabled { opacity: .6; cursor: wait; }
+    #msg { margin-top: 10px; font-size: 12px; min-height: 16px; }
+    .ok { color: #2fdd8b; } .bad { color: #ff6b6b; }
+  </style>
+</head>
+<body>
+  <h1>❄ Frosty — ESPN Sync</h1>
+  <p>Open any espn.com page first (logged in), then click below. Your session is sent straight to the app.</p>
+  <button id="go">Send my ESPN session</button>
+  <button id="copy" style="margin-top: 8px; background: #16233d; color: #7ec3ff;">Copy for iPhone</button>
+  <div id="msg"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

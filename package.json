@@ -1,0 +1,14 @@
+{
+  "name": "frosty-fantasy-pros",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:client": "npm --prefix client install && npm --prefix client run build",
+    "start": "npm --prefix server start"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}

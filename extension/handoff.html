@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Redirecting to Frosty…</title>
+</head>
+<body>
+  <p style="font-family: system-ui; padding: 24px;">Redirecting to Frosty Fantasy Pros…</p>
+  <script>
+    // The app adopts the session from #/connect?swid=…&espnS2=… and scrubs it immediately.
+    try {
+      const data = JSON.parse(decodeURIComponent(location.hash.slice(1)));
+      const q = `swid=${encodeURIComponent(data.swid)}&espnS2=${encodeURIComponent(data.espnS2)}`;
+      location.replace('https://frosty-fantasy-pros.vercel.app/#/connect?' + q);
+    } catch (e) {
+      document.body.textContent = 'Handoff failed — please retry from the extension.';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Frosty Fantasy Pros</string>
+    <string name="title_activity_main">Frosty Fantasy Pros</string>
+    <string name="package_name">com.frosty.fantasypros</string>
+    <string name="custom_url_scheme">com.frosty.fantasypros</string>
+</resources>

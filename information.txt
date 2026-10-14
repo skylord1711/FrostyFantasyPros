@@ -1,0 +1,459 @@
+﻿# Frosty Fantasy Pros — project ledger (root: C:\Users\imafa\IdeaProjects\FrostyFantasyPros)
+Genealogy: project name = "Frosty Fantasy Pros" / ffp. App = multi-league fantasy football assistant
+that is "FantasyPros, but better". Installable PWA. Client libs: react/react-dom + vite toolchain.
+Auth = ESPN cookies (SWID + espn_s2), server-memory only, never committed.
+## REBUILD (2026-10-13) — Starting fresh
+- Deleted old server/src and client/src (kept information.txt, MOBILE.md, extension, android, api, vercel.json, package.json, etc)
+- Ported SpanishApp AI chain to server/src/ai (Groq → Gemini → OpenAI → Anthropic → offline fallback)
+- Uses OpenAI-compatible for Groq/Gemini; Anthropic separate; never throws (degraded fallback)
+- Rebuilding server endpoints + client UI from scratch with existing ESPN/NFL/sleeper logic preserved where needed
+- Building fresh server + client. AI chain ported from SpanishApp (Groq→Gemini→OpenAI→Anthropic→offline). Keys: GROQ_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY; AI_PROVIDER=auto|...|none.
+- AI chain wired to /api/ai/tutor on new server. Following user request: keep RotoBot-style session sync (device-persistent + phone link handoff), PWA, same free AI. Starting clean (old srcs deleted).
+- Clean slate rebuild complete. All data wiped. AI chain (Groq→Gemini→OpenAI→Anthropic→offline) ported from SpanishApp, working on /api/ai/tutor. Server: health + ai/tutor + espn/nfl/sleeper stubs. Client: minimal (health + tutor), builds clean, PWA generated. RotoBot-style sync (device-persistent session + phone link handoff) added to server (X-Fantasy headers). Keep ESPN creds server-memory only. All data cleared (fresh rebuild).
+## STATE — VERIFIED THIS SESSION (real, on-disk, boot-proven)
+- FULL AUDIT PASS (2026-09-22 audit): cleaned dead weight + re-verified everything.
+  REMOVED: client deps react-router-dom + lucide-react (never imported) + client/server 'qrcode'
+  (QR UI cut in device-flow redesign); empty client/src/components + client/src/pages dirs;
+  .espn-signin/.signin-row CSS (password form UI is gone). .gitignore COMPLETED (was only
+  '.vercel/'): + node_modules/, dist/, *.log, .DS_Store, .env.
+  RE-VERIFIED GREEN: client build clean (PWA gen OK); smoke 24/24 PASS; local boot probe (PORT=4777)
+  => health 200, app root 200 (static serving works), oauth/start 200 w/ code, /api/espn/login fake
+  creds => espn_rejected w/ friendly msg, picks 200, unknown route 404; cloud health+picks 200.
+  REDEPLOYED to frosty-fantasy-pros.vercel.app.
+  CURRENT FILE MAP (all live code): server/src/{index,espn,rankings,trades,insights,ai,sleeper,nfl}.js
+  + smoke.mjs; client/src/{App,api,espnBridge,lib,ui,components,styles}.{jsx,js,css} + main.jsx
+  (store.js DELETED earlier); client/android/ (Capacitor, EspnBridgePlugin.java registered);
+  extension/ (optional, not part of any flow); MOBILE.md; api/index.mjs; vercel.json.
+  ENDPOINTS: /api/health; POST /api/espn/login; POST /api/espn/import (extension receiver);
+  POST /api/espn/credentials + DELETE; GET /api/espn/credentials; POST /api/oauth/start;
+  GET /api/oauth/status?code=; POST /api/oauth/complete; POST /api/espn/users/me/leagues;
+  GET /api/espn/leagues/:id/{basics,full,rankings,trades,wdis,waivers,matchups,power};
+  POST /api/espn/leagues/:id/ai; GET /api/nfl/picks?week=; static client from client/dist in
+  local mode (npm start => :4700 serves app + API together).
+- OAUTH DEVICE FLOW = THE ONE LOGIN (2026-09-22, replaces everything else): user demanded an
+  oauth2-style login, "stop this random stuff". Built GitHub-CLI-shaped device-code flow:
+  POST /api/oauth/start => {code, authorizeUrl}; GET /authorize?code= (server-rendered page w/
+  ESPN email+password form; posts /api/espn/login on the SAME LOCAL SERVER => home-IP => no
+  captcha; then POST /api/oauth/complete {code,swid,espnS2} => runs discoverUserLeagues with the
+  fresh session => flow.leagues); GET /api/oauth/status?code= => {pending:true} | {pending:false,
+  swid,espnS2,leagues}; flows auto-expire after 10min. Client ConnectTab: single "Connect ESPN"
+  button (local server mode: localhost/127./192.168.* hostname) => shows 8-char code => opens
+  authorize page in new tab => polls status every 3s up to 6min => onSignedIn(swid,espnS2,leagues).
+  Cloud-served app shows a short note (ESPN blocks DC-IP logins) + paste fallback below. Native
+  branch (EspnBridge) kept for future APK. Removed from UI: in-app password form, QR image.
+  VERIFIED LIVE end-to-end: start => code 1FE076F3, pending:true, authorize page 200, complete ok,
+  status pending:false w/ swid+espnS2+leagues. Build+smoke 24/24 PASS. REDEPLOYED.
+  USER RUNBOOK: PC: npm start (serves app+API on :4700) => open http://localhost:4700 => Connect
+  ESPN => sign in => leagues auto-sync; phone on SAME Wi-Fi: http://<PC-IP>:4700 works identically
+  (home IP => ESPN OK). Cloud URL stays for picks/public leagues.
+- PHONE-ONLY SYNC SHIPPED (2026-09-22 last): user wants EVERYTHING from the phone, no extension,
+  no PC steps. Constraints recap: ESPN login API challenges datacenter IPs (Vercel) w/ captcha;
+  browser-direct JGC calls are CORS-blocked (tested: preflight 403); ESPN's own mobile-site login
+  CANNOT be read by our origin's document.cookie (espn_s2/SWID are host-only+httpOnly on *.espn.com
+  — a PWA on vercel.app can only read vercel.app cookies). Native app (webview/Custom Tab cookie
+  read) is the ONLY code path that reads ESPN cookies, and iOS native needs Mac+Xcode. SO the
+  shipped phone-only options are: (1) paste league URL/ID — WORKS for public leagues fully from
+  the phone, no session at all; (2) web sign-in form on phone — works whenever ESPN's risk engine
+  doesn't challenge (worth one try from phone IP); (3) session paste (SWID+espn_s2) from any
+  source, remembered on-device (ffp:deviceAuth). QR handoff (qrcode pkg) also shipped for
+  PC-signin -> phone-scan, but user may ignore it. extension/ stays on disk but is OPTIONAL.
+  DO NOT re-suggest extensions, Macs, APKs, or PC-first flows. If user reports sign-in failing
+  from phone too, remaining ideas: iOS/Android native via CI (GitHub Actions macOS runner can
+  build Capacitor iOS for sideload via AltStore — needs Apple ID + signing setup; fragile), or
+  public-league-only messaging. Build+smoke PASS, redeployed same alias.
+- USER HAS NO MAC, IS ON iPHONE ONLY (final word). iPhone plan = extension "Copy for iPhone" button
+  (popup.js: reads SWID+espn_s2 via chrome.cookies, navigator.clipboard writes "SWID=…, espn_s2=…")
+  => paste once in Connect on iPhone => device-persistent session (ffp:deviceAuth). MOBILE.md
+  rewritten w/ iPhone-first steps (no Mac anywhere in the critical path). Extension files
+  syntax-verified (manifest JSON + node --check popup.js). DO NOT suggest Android APKs, Macs,
+  or DevTools cookie-copying again.
+- IPHONE REALITY + DEVICE-PERSISTENT SESSION (2026-09-22 final-final): user is on iPHONE ("wdym apk").
+  iOS apps require Mac+Xcode — Windows machine cannot build one, period. Adapted:
+  (A) @capacitor/ios installed (platform ready; npx cap add ios + EspnBridge.swift port when Mac
+      available — Android bridge code is the template).
+  (B) DEVICE-PERSISTENT SESSION: api.js now stores sessionAuth in localStorage 'ffp:deviceAuth'
+      (auto-loads on boot). ESPN session is ACCOUNT-bound not device-bound and lives for months,
+      so paste-once-on-iPhone persists. FantasyPros does the same w/ keychain; localStorage is the
+      PWA equivalent. Sign-in/native/paste all route through setSessionAuth(persist default true).
+  (C) Paste parser hardened for real cookie strings: handles SWID={...} braces, espn_s2= prefix,
+      quoting; league URL/ID path unchanged. iPhone flow = copy SWID+espn_s2 from a desktop
+      browser DevTools once, paste in Connect, remembered thereafter.
+  Build+smoke PASS, redeployed. Open iOS items: cap add ios on a Mac, EspnBridge.swift (SFSafari
+ ViewController or WKWebView + HTTPCookieStorage read), TestFlight/AltStore sideloading guidance.
+- MOBILE APP + EXTENSION SHIPPED (2026-09-22 final): user insists private leagues, wants
+  FantasyPros-style login INCLUDING mobile ("theres mobile u forgot"). Built:
+  (A) ANDROID APP via Capacitor: client/package.json +@capacitor/core,android,cli,browser;
+      capacitor.config.json (appId com.frosty.fantasypros, webDir dist); android/ platform added;
+      EspnBridgePlugin.java (Custom Tab opens ESPN REAL login page => OS CookieManager reads
+      espn_s2+SWID after login, 1.5s post-close delay, resolves {swid,espnS2,via} or rejects
+      no_espn_session); MainActivity registers it; androidx.browser:browser:1.8.0 dep added.
+      Build: cd client && npm run build && npx cap sync android && (npx cap open android |
+      cd android && ./gradlew assembleDebug) — see MOBILE.md.
+  (B) CHROME EXTENSION at extension/ (manifest v3, cookies perm on *.espn.com): popup reads
+      espn_s2+SWID via chrome.cookies, POSTs /api/espn/import, opens handoff.html#<json> =>
+      location.replace app /#/connect?swid=…&espnS2=… — App re-adopted hash handoff (scrubs URL,
+      session in memory). /api/espn/import route RESTORED as extension receiver (stores server-mem
+      creds; serverless => client uses per-request headers from handoff).
+  (C) api.js: in native app (window.Capacitor.isNativePlatform) BASE switches to
+      https://frosty-fantasy-pros.vercel.app/api (no same-origin server in the APK).
+  (D) Connect tab: native builds show ONE button "Sign in with ESPN" (EspnBridge.espnLogin); web
+      unchanged (form + paste fallback; form errors auto-open paste box w/ public-league hint).
+      espnBridge.js wraps registerPlugin('EspnBridge').
+  Verified: cap sync ok (1 plugin found), client build clean, smoke 24/24, web redeployed.
+  NOT yet verified: actual gradle APK build (needs Android SDK on machine) + live ESPN login in
+  Custom Tab — user must run MOBILE.md steps; cookie read timing (1.5s) may need tuning.
+- SIGN-IN REALITY (2026-09-22 latest): user keeps hitting espn_rejected on real creds. ROOT CAUSE:
+  ESPN's identity API (registerdisney guest/login) challenges DATAcenter IPs w/ captcha (espn-api
+  disabled it for the same reason). FantasyPros avoids it via official ESPN partner OAuth — not
+  replicable. Tested browser-direct JGC from our origin => CORS preflight 403 "Invalid CORS request"
+  (ACAO only for ESPN's own domains) => browser can't mint espn_s2 either. Android/ESPN-ANDROID
+  client key: no public source found. DECISION: keep sign-in form (works when ESPN's IP-rep checks
+  pass; e.g. some regions/times), but on espn_rejected the client AUTO-OPENS the paste fallback w/
+  hint "Public league? Paste its URL below — no sign-in needed." Public leagues need NO cookies at
+  all (fetchJson anonymous works). Private-league path to build later: tiny browser extension
+  (chrome.storage on espn.com => grabs espn_s2/SWID w/ one click) — FantasyPros uses the same
+  mechanism. Error message updated (no more "bookmark" reference). Build+smoke PASS, redeployed.
+- CONNECT TAB SIMPLIFIED + REDEPLOYED (2026-09-22 latest): user complained Connect was cluttered
+  ("wtf is all this sleeper shit and all this random"). Removed: bookmarklet generator + its UI,
+  handoff URL effect, "ESPN access" jargon card, "Version refresh" debug line, POST /api/espn/import
+  route, GET /api/sleeper/user/:username/leagues route, api.importCookies + api.sleeperLeagues,
+  site-picker/bookmark CSS. Connect is now: sign-in form (primary) -> found-leagues list w/ Add all
+  -> collapsed "Have a league URL? Paste it instead" fallback -> league chips + clean Connection
+  card w/ Disconnect. NOTE: "Sleeper" COLUMNS in Rankings are the consensus feature (kept); only the
+  sleeper *sync* UI/route was removed. Build + smoke 24/24 PASS, redeployed to same alias.
+- DEPLOYED TO PRODUCTION (2026-09-22): `vercel --prod --yes` OK, aliased
+  https://frosty-fantasy-pros.vercel.app. Live-verified: /api/health 200 (auth false),
+  POST /api/espn/login fake creds => 401 espn_rejected (Disney API reached), /api/nfl/picks 200
+  (16 games, week 3), /manifest.webmanifest 200. Multi-league management polish shipped with it:
+  leagues stored as {id,name}; league NAMES in topbar switcher + Connect chips + header sub
+  (names backfilled from /basics leagueName when added by URL), addLeague(id,{stay,name}) no
+  longer tab-jumps, Add all / Add pass name through.
+- IN-APP ESPN SIGN-IN (2026-09-22 later): user wanted "sign in with espn", mobile-first, NO bookmarklets
+  as primary. Built POST /api/espn/login {username,password} => espn.js loginWithEspn():
+  POST registerdisney.go.com/jgc/v5/client/ESPN-FANTASYLM-PROD/api-key -> api-key header ->
+  POST .../guest/login w/ Authorization APIKEY <key> {loginValue,password} => data.s2 = espn_s2,
+  data.profile.swid. Password used ONCE, never stored. Route saves creds + runs discovery chain in
+  same response => client gets swid/espnS2/leagues in one call. Error codes: espn_unreachable/
+  espn_key_unavailable (502), espn_rejected/missing_credentials (401/400) w/ friendly message.
+  Client Connect tab REORDERED: (1) sign-in form (username+password, autofill-ready), (2) bookmarklet
+  demoted to backup line, (3) manual paste collapsed. onSignedIn sets sessionAuth + importedLeagues.
+  VERIFIED LIVE: health 200; POST /api/espn/login fake creds => 401 espn_rejected (Disney API
+  actually reached + rejected => whole chain works; real creds return s2+swid when ESPN doesn't
+  demand captcha). KNOWN LIMIT: ESPN may require reCAPTCHA on guest/login (espn-api disabled it for
+  this) => then the message tells user to use bookmark/paste fallbacks. addLeague(id,{stay}) adds
+  without tab-jump; ConnectTab keyed by credsVersion, auto-detect only on bookmarklet handoff.
+- SESSION FIXES (2026-09-22, build clean, smoke 24/24 PASS):
+  1. client/src/api.js saveCredentials was sending {swid, s2}; server expects {swid, espnS2} =>
+     manual connect saved EMPTY cookies. Fixed to espnS2.
+  2. api.ai sent {question, context}; server reads req.body.teamId. Fixed to teamId => assistant
+     team picker now actually scopes WDIS answers.
+  3. Connect tab: MANUAL FALLBACK RESTORED — collapsible "paste a league URL or cookies" input
+     (accepts ESPN league URL w/ leagueId=, bare league ID, or "SWID, espn_s2" pair => saves creds
+     + sessionAuth). Auto-discovery + bookmarklet remain primary.
+  4. client/src/store.js DELETED (was unused dead code; App state + localStorage ffp:* keys are
+     the single source of truth).
+- Server FULLY DONE. Boots & serves: `npm start --prefix server` (node src\index.js) on port 4700.
+  Live probe (no cookies) => /api/health 200 ok=true seasonYear=2026; /api/espn/credentials 200;
+  /api/espn/leagues/:id/{rankings,trades,wdis,waivers,matchups,power} + POST .../ai all => 401
+  {error:"connect_required"}; /api/espn/leagues/:id/basics with BAD id => 502 {error:"ESPN returned
+  non-JSON (check the league ID)."} (fetchJson now wraps non-JSON from ESPN gracefully); /api/nope 404.
+- Client FULLY DONE. `npm install --prefix client` done; `npm run build --prefix client` CLEAN
+  (~168 kB JS / 10 kB CSS, PWA manifest + SW generated). Dev server verified: `npm run dev --prefix
+  client` serves :5173 and proxies /api => :4700 (GET /api/health thru proxy = 200).
+- Runtime smoke tests: `npm test --prefix server` (smoke.mjs, synthetic rosters) => ALL PASS
+  (wdis lineup+picks, waivers excludes rostered, matchups projection+favorite, power ranking,
+  ai intent routing greet/wdis/waiver, nfl picks: Vegas+model agreement/no-line/over-under/margin
+  sign, sleeper consensus blend+fallback, trades: offers found+graded+teamId-prioritized+give/get).
+  24 assertions, 0 fails.
+- Root-cause fix: client {package.json,index.html,vite.config.js} had UTF-8 BOM => vite-plugin-pwa
+  crash `Unexpected token '﻿'` on build. BOMs STRIPPED. Was regenerating via code page on save —
+  keep files ASCII-safe (no BOM) to preserve the fix.
+- NEW NFL PICKS ENGINE: /api/nfl/picks (PUBLIC, no fantasy cookies) => verified live
+  (HTTP 200, week=3 default, 16 games all pickable, e.g. GB -6 pick GB 86% winPct, score-lean
+  Under 42 vs OU 44.5). Data = ESPN NFL v2 scoreboard (Vegas spread+OU, provider e.g. DraftKings)
+  + in-season team records (offPPG/defPPG) => model winprob/favorite + total + O/U lean + reason.
+  ?week=N supported (verified week=2 => 200). Final probe: health 200, picks 200, rankings/trades
+  401 without cookies, /api/nope 404.
+- NEW SLEEPER CONSENSUS: server/src/sleeper.js — espn_id->sleeperId map (~14.6MB, cached 12h,
+  fails soft), fetchWeekProjections (pts_ppr/half_ppr/std + opponent), enrichWithSleeper, consensusOf.
+  loadContext now enriches every analytics call (rankings response reports sleeperMatched +
+  consensus="ESPN + Sleeper"). rankings.js composite now = consensus-blend
+  (consensus*0.7 + actualPPG*0.3).
+- TRADES upgrades: findTrades maxOffers default 24, optional ?teamId= surfaces caller's deals
+  first, offers now carry a letter grade (A-D). normalizeRosters now enriches sparse embedded
+  player refs from league players list (fixes position-less roster entries).
+- LINEUP STARTER (WDIS v2): wdisForTeam now returns `current` (locked starters, real slotIds),
+  `currentTotal` (sum of current skill starters), `lineupDelta` (optimal - current). FLEX-recommended
+  players keep their real position (`position: skill(p)`) so they show in the right pos row. wdis
+  route also attaches `opponent` ({abbrev, projected}) from computeMatchups this week.
+- ALL MY LEAGUES: VERIFIED via multiple live probes + docs (ffscrapr/espn_api/fflr) that ESPN has NO
+  cookie endpoint that lists a user's leagues ("ESPN does not support looking up leagues by user").
+  FantasyPros itself needs a Chrome extension (reads the ESPN page you're on) or ESPN login OAuth
+  (recaptcha-blocked) to do auto-discovery — plain cookies can't. Decision: Connect tab is now
+  FantasyPros-style — save SWID/espn_s2 once ("Connect ESPN"), then server runs a best-effort
+  DISCOVERY CHAIN (POST /api/espn/users/me/leagues -> espn.js discoverUserLeagues(), probes
+  fantasy.espn.com/lm-api-reads users/{swid}?view=mUser&view=mHistory, site.web common leagues,
+  legacy appstate; parses {leagues, favoriteLeagues, leagueSummaries} shapes + embedded leagueIds),
+  and the client shows "Found N leagues — pick which to sync" with Add buttons, auto-runs detect
+  right after save, plus paste-URL/ID still there as the reliable fallback. Verified live: endpoint
+  200 (empty+probes) with fake creds, 401 without creds. NOTE: real discovery depends on ESPN
+  still serving one of those shapes with logged-in cookies; if empty, fallback completes the flow.
+- Header middleware fix: cookie bits sent per-request as X-Fantasy-SWID / X-Fantasy-ESPN-S2
+  (dash-separated — Node lowercases; a mismatch (ESPNS2 vs espn-s2) silently dropped the s2 header
+  and was caught via debug probe; the interim "rankings 401" readings were this, not real 401s).
+## FILES
+- server/package.json (scripts: start, dev, test=smoke.mjs) + server/src/:
+  - espn.js — ESPN API: credentials, fetchJson (graceful non-JSON/auth), views, normalizePlayer,
+    POSITION_BY_SLOT, skillPos, leagueUrl, fetchLeague.
+  - rankings.js — computeRankings, buildPlayerValueMap, COMPOSITE (0.7 proj / 0.3 actual), tiers A-F.
+  - trades.js — normalizeRosters, findTrades (win-win fairness scoring), computeNeeds.
+  - insights.js — wdisForTeam (current+recommended+decisions+currentTotal+lineupDelta), topFreeAgents,
+  computeMatchups, computePower. FLEX picks carry real position; wdis route adds opponent.
+  - ai.js (NEW) — answerQuestion: rule-based intent router (greet/wdis/waiver/trade/power/rankings/
+    matchups/summary); optional OpenAI via process.env.OPENAI_API_KEY (gpt-4o-mini, NEVER commit key).
+  - index.js — endpoints: /api/health; /api/espn/credentials GET/POST/DELETE;
+    /api/nfl/picks?week= (PUBLIC); /api/espn/leagues/:leagueId {basics(public), full, rankings,
+    trades?teamId=&limit=, wdis?teamId=, waivers?limit=, matchups, power, POST ai {question,teamId}}.
+    Shared loadContext() pipeline: fetchLeague -> normalizePlayer -> enrichWithSleeper ->
+    computeRankings (consensus-aware) -> valueMap -> normalizeRosters.
+  - nfl.js (NEW) — ESPN NFL scoreboard/odds, currentSchedule (rolls past finished weeks),
+    teamSeasonRecords (weeks 1..through, cached per {year,week}), parseSpread, projectGame
+    (Vegas line + model margin + total + O/U lean + winPct + reason), computePicks.
+  - sleeper.js (NEW) — espn_id->sleeperId map, fetchWeekProjections, enrichWithSleeper,
+    consensusOf (keeps ESPN when no Sleeper rating). CONSENSUS = ESPN projWeek vs Sleeper PPR.
+- client/ (installed & building): package.json (react, vite 5, plugin-react, vite-plugin-pwa),
+  vite.config.js (proxy /api=>4700, manifest+SW, icons fixed to real png paths), index.html
+  (icon hrefs fixed), public/icons/pwa-{192,512}x192.png, public/apple-touch-icon.png, public/favicon.png.
+  src/: main.jsx, App.jsx (REWRITTEN — 9 tabs fully wired), api.js (all 13 api fns), lib.js
+  (format helpers ONLY; duplicate api/http removed), ui.jsx (Loader/ErrorBox/Empty/RatingBar/...),
+  components.jsx (Card/DataView/KeyVal/Header), styles.css (NEW — frosty dark theme).
+- client/src/App.jsx tabs: connect (PASTE MANY league URLs/IDs -> all added; multi-league chips +
+  topbar league switcher), dashboard (standings+matchups), rankings (filterable, tier chips + bars +
+  ESPN/Sleeper/Act PPG/consensus columns + opponent + sleeperMatched nudge), trades (needs + win-win
+  offers with A-D grade chips + team picker that sorts your deals first), wdis (LINEUP STARTER:
+  per-position Current vs Optimal columns with sit/start arrows, 🔻 marker on benched starters,
+  ▲ +delta badge, vs-opponent projected in sub), waivers, matchups (projected winners), power (pythag
+  ladder + reason strings), picks (PUBLIC NFL slate: date, matchup, line, O/U, model pts, pick chip,
+  conf %, O/U lean; prev/next week nav), ai chat (team picker, intent answers).
+- client/src/api.js now exports picks(week) too.
+- VERCEL DEPLOY (live): production https://frosty-fantasy-pros.vercel.app (project frosty-fantasy-pros,
+  skylord1711). Layout: root package.json (express+cors runtime deps, build:client script),
+  api/index.mjs (re-exports server app for the serverless function), vercel.json (function
+  maxDuration 60s, buildCommand -> client/dist static, rewrite /api/* -> function + SPA fallback),
+  .vercelignore. Server exports app + only listens when VERCEL env is unset. Verified live:
+  /api/health 200, /api/nfl/picks 200 (16 games, week 3 default), manifest 200, /api/espn/import 200,
+  sleeper proxy 404 for unknown user (thin documented proxy). Deployment Protection (Vercel
+  Authentication) was ON by default -> disabled via project API (PATCH /v9/projects ssoProtection=null).
+- SYNC FLOW = FantasyPros-style "Select a Site": Connect tab shows Sync NFL Leagues w/ site picker
+  (ESPN / Sleeper / other). SLEEPER: enter username -> GET /api/sleeper/user/:u/leagues proxies
+  Sleeper public API (no auth) -> all leagues listed w/ Add (name+season+teams). ESPN: one-time
+  draggable BOOKMARKLET "Grab from ESPN" (generated with origin) — user drags to bookmarks, clicks it
+  on an open ESPN league page; it reads SWID+espn_s2 from cookies itself, POSTs to /api/espn/import
+  (stores server-mem creds), then bounces to #/connect?swid=&espnS2=&leagueId=; App mount-effect
+  adopts via sessionAuth (per-request headers), auto-adds/selects leagueId, scrubs URL via
+  replaceState. No DevTools/copy-paste. Manual paste + cookies card remain as fallbacks; cookies card
+  auto-runs detectLeagues after save.
+- Serverless auth: functions are stateless, so server-memory cookies were not enough. Client keeps
+  cookies in JS memory only (never stored) and sends X-Fantasy-SWID / X-Fantasy-ESPNS2 headers on
+  every call; index.js middleware sets per-request creds (cleared on response finish), espn.js
+  hasCredentials/authHeaders fall back to request creds. Local server behavior unchanged.
+- NOTE cloud constraints: first auth-gated call pays the 14.6MB Sleeper map download (function cap
+  60s; cached per warm instance). OPENAI_API_KEY (GPT answerer) must be added in Vercel dashboard
+  env for that route; rule-based answers work without it.
+- client/src/store.js still present but UNUSED (superseded by App state + localStorage) — safe to delete.
+## CURRENT STATE (Sep 22, 2026 — private-league sync WORKING end-to-end)
+ESPN now rejects ALL programmatic logins (PALOMINO_CHECK_FAILED = Arkose captcha) and retired
+its old API shapes. The app now works entirely through ESPN's real pages + the current API:
+1. SIGN-IN: browser-assisted. Server opens ESPN's real login page in a Chrome window
+   (throwaway profile + DevTools port), watches for espn_s2/SWID cookies, saves them to
+   ~/.frosty-espn-session.json (persists across restarts). Password never touches the app.
+2. LEAGUE DISCOVERY: ESPN's /users API is retired. The app opens ESPN's fantasy page with the
+   session injected (desktop-size window — mobile layout has no league menu), scrapes the
+   global-nav league links, then fetches each league's real name via the API.
+   CRITICAL DETAIL: page-side regexes in template literals lose backslashes — parse ids in
+   Node, not in the page. Async in-page loops get killed by ESPN navigations ("Execution
+   context was destroyed") — use quick sync evals after a settle wait.
+3. LEAGUE DATA: ESPN's league API now REQUIRES /segments/0/ in the path and the JSON host is
+   lm-api-reads.fantasy.espn.com (fantasy.espn.com serves HTML). SWID cookie must be braced
+   {UPPERCASE}. Team rosters: team.roster.entries[], player at entry.playerPoolEntry.player.
+   defaultPositionId is the NEW scheme: 1=QB 2=RB 3=WR 4=TE 5=K 16=D/ST (Burrow=1 proves it).
+VERIFIED LIVE with the user's account: sign-in works, both football leagues found
+(900897413 + 293427573), league basics/rankings/wdis all return real data
+("Nerd HQ" league, week 3, Burrow/Taylor/Lamb with correct positions).
+Tests 24/24 pass, client builds clean, both deployed (localhost + vercel).
+PLAYER IMAGES + TEAMS (added Sep 22): ESPN strips headshot/proTeam from league views, so
+normalizePlayer synthesizes them — headshot via the stable CDN pattern
+https://a.espncdn.com/i/headshots/nfl/players/full/{id}.png (HEAD-verified 200),
+proTeam via the PRO_TEAM_BY_ID map (proTeamId 26=SEA etc.). UI shows position badges
+(color-coded QB/RB/WR/TE/K/DST) next to player names, bigger avatars everywhere.
+KNOWN LIMITS: league scan takes ~30s first run (browser opens once, then cached);
+'no_chrome' stage if Chrome missing; phone shares the PC session via /espn-connect. (if continuing)
+1. USER MUST TEST WITH REAL CREDS (agent cannot): run `npm start`, open localhost:4700, Connect
+   ESPN, real ESPN email+password. If espn_rejected even from home IP => ESPN tightened guest/login;
+   next lever is a proxy through the user's own home IP is impossible — fallback is paste-path or
+   extension/ (built, optional). Verify leagues auto-sync + wdis/trades tabs on a real league.
+2. Mobile same-Wi-Fi flow: phone => http://<PC-IP>:4700 (e.g. 192.168.1.237) — test sign-in there.
+3. Sleeper players map ~14.6MB: first authed call pays it (12h cache). Prewarm on boot if slow.
+4. If user ever gets Mac access: npx cap add ios + Swift port of EspnBridgePlugin (Android ver is
+   the template). Android APK build via MOBILE.md also untested (needs Android SDK).
+5. Optional polish: show league logos in switcher, standings playoff odds, README.md at root.
+## MOTION / PREFS (user keeps emphasizing)
+- "FantasyPros but better": rankings, automatic trade finder, "who should I start" (WDIS),
+  "best team" power rankings, AI assistant. Plain-English reasoning, not raw ESPN deltas.
+- User wants information.txt updated after EVERY edit so work resumes after disconnect. READ IT FIRST.
+- Keep server ESM 2-space, minimal comments; creds NEVER in files/code.
+## CREDS / DO-NOT-COMMIT
+- Credentials server-memory only via POST /espn/credentials {swid, espnS2}; DELETE clears.
+- Never write creds into information.txt or code. No localStorage of creds in the client.
+## Round 3 — matchup stars, week navigation, cloud handoff (Sep 2026)
+- Rankings: week nav (‹ Week 4 ›, projections for any week 1–18), This week / Rest-of-season toggle.
+- Matchup stars: 1–5★ under every player (value percentile within position; top 20% = 5★).
+- Cloud handoff: Connect tab → "Send session to the cloud site" copies + opens a link that
+  adopts the ESPN session AND the synced league list on frosty-fantasy-pros.vercel.app.
+  After that the phone works standalone — no PC, nothing running at home.
+- League discovery (list-my-leagues) remains local-only: ESPN's menu is client-rendered.
+## Round 4 — FantasyPros expert data + cloud connect (Sep 2026)
+- New source: FantasyPros ECR (183 experts, 554 players, cached 6h in ~/.frosty-fp-ecr.json)
+  parsed from their public rankings page (ppr/half/std). Shown as "FP ECR" column + pos rank.
+- Start/sit confidence now expert-driven: ECR gap between players -> % confidence; reasons cite ECR.
+- Assistant AI: OpenAI gpt-4o-mini when OPENAI_API_KEY set, else built-in rule engine over league data.
+- Cloud fix: Connect tab on vercel now shows the Connect button + instructions (was a dead-end note).
+## Round 5 — phone flows fixed, FINAL setup that works (Sep 22 2026)
+- CRASH FIXED: cloud app died on handoff — code called api.setSessionAuth() but setSessionAuth
+  is a module-level export in api.js. App.jsx now imports { api, setSessionAuth, clearSessionAuth }.
+  Verified end-to-end in a real browser: link adopts session + both leagues on vercel.
+- iOS quirk: home-screen app has SEPARATE storage from Safari — that's why "Add to Home Screen
+  resets" the connection. Fix shipped: Connect tab paste box now accepts the FULL phone link
+  (frosty-fantasy-pros.vercel.app/#/connect?swid=…&espnS2=…&l=id~name,...) — one paste INSIDE
+  the home-screen app connects that app permanently.
+- Phones no longer see "Connect ESPN"/"Chrome is needed" — that flow launches desktop Chrome on
+  the PC (only way past ESPN's captcha), phone gets paste-link UI instead (isPhone UA gate).
+- UI renamed: "Take it to the cloud" -> "Send to your phone" + "📱 Copy phone link" button.
+- USER'S WORKING SETUP (tell him this tomorrow): 1) PC localhost:4700 -> Connect -> Copy phone
+  link  2) open frosty-fantasy-pros.vercel.app on iPhone, Add to Home Screen  3) open icon ->
+  Connect tab -> paste link -> Connect. Phone then standalone forever (cellular, anywhere).
+  Only localhost job left: generating/renewing that link (ESPN captcha = real-browser sign-in only).
+- USER MOOD: hates localhost/running stuff, wants everything from the site, got annoyed at
+  slowness. FantasyPros ECR is live (183 experts). Watch: he may want weekly ECR next (FP gates it).
+- REMINDER: his ESPN password was pasted in chat — told him to change it, not confirmed yet.
+## Round 6 — Waiver wire rebuild + accuracy guards (Sep 23 2026)
+- Rankings already had: per-position chips (ALL/QB/RB/WR/TE), This-week/ROS toggle, week nav
+  1-18, FP ECR column, matchup stars. Verified accurate on both leagues (170/198 players).
+- WAIVERS REBUILT (FantasyPros-style): team picker -> per-team drop candidate + priority-add
+  card; columns: Add-confidence %, FP ECR, proj, PPG, ownership, why (cites ECR + matchup stars).
+- ACCURACY GUARDS ADDED (both matter, found via live data):
+  1. Never suggest a downgrade: drop must beat best add by 1.5+ composite (was about to tell
+     user to drop McLaurin c11.0/ECR51 for Keenan Allen c5.2/ECR188). If roster is strong,
+     returns drop=null and UI says "nothing on the wire beats your bench".
+  2. Honest add-confidence: 60% expert ECR (ECR 1 -> 95, ECR 400 -> 25) + 40% wire-strength;
+     no-ECR players capped at 72% so deep stashes never look like must-adds.
+- All 7 endpoints verified on both leagues; 24 smoke tests pass; deployed (bundle index-DaSlJmXD.js
+  matches local = cloud is current).
+- Server was down Sep 23 morning (Freebuff restart) — restarted with: cd server && PORT=4700
+  node src/index.js. Session persisted, no re-auth needed.
+- NEXT when he's back: phone setup (Round 5 steps), then candidate work: weekly ECR emulation,
+  FAAB bid suggestions, matchup stars for defenses/kickers.
+## Round 6b — WHY the home-screen app "reset" + the real fix (Sep 23 2026)
+- TWO client bugs caused "added to homescreen -> teams go away / not synced":
+  1. iOS standalone app was running a DAYS-OLD cached bundle (pre-paste-box code) — the SW
+     never force-updated. FIX: client/src/registerSW.js — registers /sw.js, checks for updates
+     every 60s + on focus, SKIP_WAITING + reload on new version. Icon apps self-update now.
+  2. Connected-status only asked the (stateless) cloud server -> showed "not connected" even
+     after a successful paste. FIX: hasSessionAuth() in api.js — status = device session OR
+     server cookies (local PC server keeps cookies; cloud must consult the device).
+- Verified end-to-end in a real browser on the new deploy (index-aNO4j33g.js): handoff link
+  adopts session + both leagues, header dot green, dashboard week 3.
+- HIS RECOVERY STEPS (old icon still holds the old SW, so one-time): DELETE the old Frosty
+  icon -> open the connect link in Safari -> Add to Home Screen (fresh icon gets new SW) ->
+  open icon -> Connect tab -> paste link -> Connect. After this the app self-updates forever.
+## Round 7 — FAAB/priority claim advisor + mobile polish (Sep 23 2026)
+- USER'S LEAGUE IS NOT FAAB: acquisitionSettings.isUsingAcquisitionBudget=false -> "priority"
+  waiver type. Advisor adapts: FAAB leagues get $ bid of budget (confidence+need+stars -> %,
+  capped 35%), priority leagues get Claim now vs stash-only text.
+- Waivers route reads REAL league settings (faab vs priority, budget) + computeNeeds for the
+  picked team; each player row now carries bid:{type,bid,budgetLeft,text}.
+- Waivers UI: "Claim advice" column (bid/claim + reason + why line under it).
+- Mobile CSS rebuilt: swipeable tabs w/ 40px targets, 16px inputs (no iOS zoom), edge-to-edge
+  table swipe, safe-area insets. Verified: user connected (both leagues), nag message gone.
+- Deployed (index-CHoVPwit.js), all smoke tests pass.
+- Phone setup COMPLETE on his end (Round 6b steps worked). Next ideas: weekly ECR emulation,
+  lineup lock-time alerts, assistant using ECR.
+## Round 8 — Insider tab: buy/sell radar + player news (Sep 23 2026)
+- NEW server/src/insider.js: (1) insiderMoves — expert-vs-market divergence radar; per-position
+  percentiles of FP ECR (experts' belief) vs composite (current value). gap > +8% = buyLow
+  (experts believe, market cooled), < -8% = sellHigh (producing but experts never bought in).
+  WATCH: market pct direction bug fixed live (Gibbs ECR1 wrongly buyLow before). (2) newsForPlayers
+  — ESPN news API (site.api.espn.com .../nfl/news?limit=100) tags articles with athlete IDs that
+  MATCH our fantasy player ids (verified 39/50 tagged); name-match fallback; 15-min cache.
+- Insider endpoint /api/espn/leagues/:id/insider: buyLow+sellHigh (8/side) + roster-scoped news
+  (62 items live on his league). Insider tab added (after Rankings, labeled "Insider 🔥").
+- Rankings rows now show "⚖ split" badge when experts disagree (fpStd >= 12 = ECR std dev).
+- Deployed (index-CwdY5n4y.js), tests pass. Next: weekly ECR emulation, lock-time alerts,
+  assistant using ECR, matchup stars for K/DEF.
+## Round 9 — per-league isolation + 2-for-1 trade packages (Sep 23 2026)
+- FIXED cross-league bug: teamId was global localStorage — team 8 of Nerd HQ silently applied
+  to Ismail2 (wrong-roster advice). Now ffp:teamByLeague map, keyed by league id; stale team
+  (not in active league) resolves to empty. Per-league team memory survives restarts.
+- Trades tab header shows league name. Trades engine: NEW 2-for-1 package scan (two bench
+  pieces bundled for an impact target >= 10 composite; second piece chosen to FIT the 0.95-1.45
+  value band nearest 1.2x target — first attempt overpaid 100% of the time, fixed live).
+  Verified: L1 24 offers incl. 8 packages, L2 24 incl. 6. Client renders 3-column give/give2/get.
+- Deployed (index-CtsJXtfH.js), tests pass.
+- Everything now switches cleanly with the league dropdown: rankings, waivers, trades, wdis,
+  insider, power, matchups all use the per-league team + the active league id.
+## Round 10 — bye weeks, weekly expert ranks, AI brain, My Team hub (Sep 23 2026)
+- BYE LAYER: nfl.js weekGames() (scoreboard per week, 10-min cache) -> byeTeams set + kickoff
+  per team. ESPN uses JAX not JAC (phantom Jacksonville bye bug — fixed). loadContext stamps
+  every ranking row onBye + gameDate. wdisForTeam NEVER recommends a byed player (auto-swaps,
+  'bye' decision type). Waivers sink byed FAs. Client: red BYE chips + kickoff times (Sun 1:00).
+- WEEKLY EXPERT RANKS (fpWeekly): season ECR re-weighted 65% this-week consensus + 35% ECR,
+  per position. Shown in Rankings This-week as "WK n · ECR n" (ROS view keeps season ECR).
+- AI digest now feeds: ECR, claim advice, 2-for-1 trades, insider radar, byes. Trade intent
+  wins over start/sit (multi-intent fix). D/ST logos (teamlogos CDN) fix 404 headshots.
+- MY TEAM hub: /myteam endpoint + tab — starters/bench w/ kickoffs, lineup moves, news,
+  lock-time banner. Verified: IIT Nerd HQ ~153.5, IIT Ismail2 ~154.3 projected.
+- ROSTER NOTES: IIT Nerd HQ = 0-2 but 4th-most PF (unlucky). Kyren on both his teams.
+- USER QUESTION — Kyren for Saquon: Saquon owned by Jeff Huizenga (team 7, STACKED, 1-1);
+  "the Lee guy" = Joe Leibe (team 1, 2-0, RB committee + deep WR -> Kyren+McLaurin for JSN
+  angle). Saquon = stinger, MRI pending, QUESTIONABLE, 0 proj. ADVICE GIVEN: wait for MRI
+  news before sending Kyren-for-Saquon; only straight-up once cleared.
+- PARROT PALS: NOT on his ESPN account (only 900897413 + 293427573). If he gives the league
+  ID, all analysis works for it. League discovery APIs retired by ESPN (mUser path = HTML now,
+  kona_user_leagues needs x-fantasy-filter games shape; browser discovery hung this session).
+- MISTAKE + FIX: killed ALL chrome.exe while cleaning up a hung discovery probe — nuked his
+  personal browser. Apologized; told him Ctrl+Shift+T. NEVER taskkill chrome.exe broadly again.
+- TRADE MATCHES SHIPPED (insider?teamId=): SELL direction (my hot sell-highs -> teams that
+  need the position -> their bench piece at my need; if I have no needs, any-pos upgrade),
+  POACH direction (buy-lows OTHER teams hold -> offer their need from my bench). K/DST never
+  matched. Verified live: 6 matches incl. Likely->Caleb Williams, poach Kelce->Josh Allen.
+- Deployed (index-BVR7ktvn.js), tests pass.
+## Round 11 — Trade evaluator shipped (Sep 23 2026)
+- NEW /tradeEval endpoint + UI at top of Trades tab: pick players on both sides (up to 4 per
+  side), server grades with composite ratio + notes (bye flags, buy-low detection, sell-timing).
+  Verdicts: ACCEPT (>=1.2), SLIGHT WIN (>=1.0), SLIGHT LOSS (>=0.85), DECLINE.
+- Sanity-checked with his real question: Kyren(19.5) for Saquon(11.1) = ratio 0.57 DECLINE
+  (while Saquon injured). Player IDs: Kyren 4430737, Saquon 3929630, JT 4040715 (in-ESPN pool).
+- Trade-matches poach/sell engine live (see Round 10). Both deployed (index-Bw6E5zpi.js).
+- Evaluator UI browser-verified on mobile viewport: both-side selection (▲/▼ per player row),
+  grade button, verdict + value summary render correctly. Scripted test hit wrong rows (JSN both
+  sides -> ratio 1.0 SLIGHT WIN, correct math); server-side Kyren/Saquon eval already verified
+  (0.57 DECLINE). Screenshot on file. Final bundle after UI fix deployed.
+## Round 12 — PPG accuracy fix + News tab (Sep 23 2026)
+- MAJOR DATA FIX: actualPPG was season-total ÷ weekly-entries, but ESPN's pool view only ships
+  ONE weekly entry (latest week) — so JSN showed PPG 68.7 (season total ÷ 1). REAL fix: ESPN's
+  season stat entry carries appliedAverage = true per-game average. normalizePlayer now reads it
+  (stats[].appliedAverage, statSourceId 0 sp 0 thisSeason) -> calcActualPPG prefers it.
+  Verified: JSN 68.7->34.35, Gibbs 56.9->28.45, JT 54.3->27.15 (matches ESPN app exactly).
+  Rankings re-ordered sanely (Gibbs #1 ECR1, no doubled-total WRs at top). Stat keys probed:
+  53=receptions NOT GP, 24=carries for RBs, no GP key exists — appliedAverage is the only truth.
+- NEWS TAB: /news endpoint — whole cache of player-tagged stories, each tagged onMyRoster
+  + %owned + ECR, sorted newest. Client News tab (after Insider): 'My league's players' vs
+  'Everything' filter, age stamps, descriptions, links. Verified live: 53 items, 51 league-tagged.
+- Deployed (index-BBgmKGLd.js), tests pass.
+- League discovery: ESPN retired all server-side list APIs (mUser->HTML, kona needs browser
+  filter games shape that returns game list not leagues; v2 userLeagues = HTML). Paste-link +
+  browser sign-in remain the paths. Did NOT fix (parked) — low value vs effort now.
+---
+
+
+[REBUILD 2026-10-13] Clean slate. AI chain (Groq→Gemini→OpenAI→Anthropic→offline) ported from SpanishApp, /api/ai/tutor working. Server: health+ai/tutor+espn/nfl/sleeper + core + features + matchups/boxscores + teams + rosters + activity + leagues placeholder + RotoBot-style sync (X-Fantasy headers, creds server-memory only). Client: session helper (ffp:deviceAuth, link builder), extended api (incl. teams/rosters/activity), UI with Teams tab + actions, link adoption (#/connect), builds clean, PWA. RotoBot-style: device-persistent + phone link handoff via headers. All data wiped. Next: add client tabs (Rankings/Trades/Waivers/Matchups/Power), PWA SW update checks for iOS home-screen (self-update), reuse preserved ESPN/NFL/Sleeper logic where useful to make waivers/trades/drops/rosters/teams update with real data when creds present. Keep ESPN creds server-memory only. Checked: health 200, teams/rosters/activity ok, ai tutor ok, espn creds ok, build ok.
