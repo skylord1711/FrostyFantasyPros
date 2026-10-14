@@ -147,10 +147,11 @@ export async function fetchLeagueTeams(leagueId: string, season: number, req?: a
 }
 
 export async function coreRouter(app: any) {
-  // Best-effort account discovery. ESPN retired the cookie-based "my leagues"
-  // endpoint, so this returns an empty list and the client relies on add-by-URL.
+  // Account league discovery now runs after the in-app ESPN/Disney login
+  // (see disney.ts discoverLeagues, which POSTs to the leagues?view=mNav
+  // endpoint with the session cookies). This bare route stays for compatibility.
   app.get('/api/espn/leagues', async (_req: any, res: any) => {
-    res.json({ leagues: [], note: 'ESPN no longer lists leagues by account. Add leagues by URL or ID.' })
+    res.json({ leagues: [], note: 'Use the ESPN sign-in (POST /api/auth/espn/login) to discover leagues.' })
   })
 
   app.post('/api/espn/leagues/resolve', async (req: any, res: any) => {

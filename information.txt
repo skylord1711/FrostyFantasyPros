@@ -535,4 +535,38 @@ the new routes; POST start -> status waiting_login; CANCEL fully cleaned up the 
 the actual ESPN login + league discovery (needs the user to complete the Chrome login).
 BUILD: npm run build green (server bundle 32.5kb + client PWA). COMMITTED this round.
 
+===== ROUND: in-app ESPN/Disney username+password login (replaces browser window) =====
+USER DIRECTIVE: don't like the browser-window way; use the in-app Disney username/password login
+(like FantasyPros mobile / the RotoBot app). Researched how FantasyPros & RotoBot do ESPN:
+- FantasyPros: desktop = Chrome extension (reads your espn.com session); mobile = in-app ESPN
+  username+password; stores an encrypted ESPN cookie server-side for re-sync.
+- RotoBot: ESPN connects ONLY in their mobile app (embedded ESPN login); Sleeper/Yahoo on web.
+- ESPN has NO OAuth; cookie auth (SWID + espn_s2) is the only supported method.
+KEY DISCOVERY (probed live 2026-10-14): the account->leagues endpoint IS alive — it is a POST, not
+GET. GET .../seasons/<yr>/segments/0/leagues?view=mNav returns 405 "HTTP Method Not Supported";
+POST to the same URL (view=mNav / kona_user_leagues / userLeagues) returns 401 "Credentials are
+missing" without cookies => it is an authed POST and is very likely the ESPN web app's league picker
+source (the ledger previously believed it was dead — it was only tested as GET). Also verified the
+registerdisney login flow: api-key POST returns an `api-key` header (v5 AND v6 both work), and
+guest/login needs header `Authorization: APIKEY <key>` (NOT "API_KEY"/Bearer) — with a fake password
+it returns code AUTHORIZATION_CREDENTIALS (correct format) vs API_KEY_INVALID (wrong format).
+IMPLEMENTED server/src/disney.ts (replaces browser-auth.ts, deleted):
+- disneyLogin(): POST registerdisney .../ESPN-FANTASYLM-PROD/api-key -> api-key; POST .../guest/login
+  with Authorization:APIKEY + {loginValue,password} -> data.s2 + data.profile.swid; setCreds().
+  Maps errors: AUTHORIZATION_CREDENTIALS -> bad_credentials (401); PALOMINO_CHECK_FAILED/captcha ->
+  captcha; API_KEY_INVALID -> retry. Password used once, never stored.
+- discoverLeagues(): POSTs leagues?view=mNav|kona_user_leagues|userLeagues|mLeague (seasons yr, yr-1)
+  with Cookie SWID/espn_s2 + X-Fantasy-Source/Platform, walks the JSON for {id,name} league objects.
+- enrichLeagues(): fills name/teamCount via resolveLeague.
+- Route POST /api/auth/espn/login {username,password} -> {ok,swid,espnS2,leagues}.
+CLIENT: SignIn.jsx is now a username+password form (calls api.authLogin) — no browser launch, no
+spinner/poll. api.js: removed authBrowser*, added authLogin. Removed browser-auth.ts. On success saves
+device auth + addLeague for each discovered league. Build green.
+VERIFIED LIVE: POST /api/auth/espn/login fake creds => 401 {ok:false,error:"bad_credentials",
+message:"ESPN rejected that username/password..."} — full registerdisney round-trip runs and error
+mapping works. NOT testable without real creds: successful login + the POST league-list response shape
+(discovery is defensive/flexible). NOTE: captcha-gated from datacenter IPs, so this works when run
+locally (home IP) via `npm start`; on Vercel it may hit captcha. Committed this round.
+
+
 

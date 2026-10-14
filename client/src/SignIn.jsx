@@ -2,92 +2,80 @@ import React from 'react'
 import { api } from './api.js'
 import { setDeviceAuth, addLeague } from './session.js'
 
-const ACTIVE = ['starting', 'waiting_login', 'discovering']
-
 export default function SignIn({ onDone }) {
-  const [status, setStatus] = React.useState('idle')
+  const [username, setUsername] = React.useState('')
+  const [password, setPassword] = React.useState('')
+  const [busy, setBusy] = React.useState(false)
   const [msg, setMsg] = React.useState(null)
   const [leagues, setLeagues] = React.useState([])
-  const sessionRef = React.useRef('')
-  const timer = React.useRef(null)
+  const [done, setDone] = React.useState(false)
 
-  const stop = () => { if (timer.current) { clearInterval(timer.current); timer.current = null } }
-  React.useEffect(() => () => stop(), [])
-
-  const poll = async () => {
-    const r = await api.authBrowserStatus(sessionRef.current)
-    if (!r || !r.ok) return
-    setStatus(r.status)
-    if (r.message) {
-      const type = r.status === 'done' ? 'ok' : (['error', 'expired', 'cancelled'].includes(r.status) ? 'err' : 'info')
-      setMsg({ type, text: r.message })
+  const submit = async () => {
+    if (!username.trim() || !password) return
+    setBusy(true); setMsg({ type: 'info', text: 'Signing in to ESPN…' }); setLeagues([]); setDone(false)
+    let r
+    try {
+      r = await api.authLogin(username.trim(), password)
+    } catch (e) {
+      r = { ok: false, message: 'Network error contacting the server.' }
     }
-    if (r.status === 'done') {
-      stop()
-      if (r.creds && r.creds.swid && r.creds.espnS2) setDeviceAuth({ swid: r.creds.swid, espnS2: r.creds.espnS2 })
+    setPassword('')
+    setBusy(false)
+    if (r && r.ok) {
+      setDeviceAuth({ swid: r.swid, espnS2: r.espnS2 })
       const list = r.leagues || []
       list.forEach(addLeague)
       setLeagues(list)
+      setDone(true)
+      setMsg({
+        type: 'ok',
+        text: list.length
+          ? 'Signed in. Found ' + list.length + ' league' + (list.length > 1 ? 's' : '') + '.'
+          : 'Signed in to ESPN. No leagues were found for this account this season.'
+      })
       onDone && onDone(list)
+    } else {
+      setMsg({ type: 'err', text: (r && r.message) || 'ESPN sign-in failed.' })
     }
-    if (['error', 'expired', 'cancelled'].includes(r.status)) stop()
   }
-
-  const start = async () => {
-    setStatus('starting'); setMsg({ type: 'info', text: 'Opening ESPN sign-in…' }); setLeagues([])
-    const r = await api.authBrowserStart()
-    if (!r || !r.ok) {
-      setStatus('error')
-      setMsg({ type: 'err', text: (r && r.message) || 'Could not start ESPN sign-in.' })
-      return
-    }
-    sessionRef.current = r.sessionId || ''
-    setStatus(r.status || 'starting')
-    stop()
-    timer.current = setInterval(poll, 2000)
-  }
-
-  const cancel = async () => {
-    stop()
-    try { await api.authBrowserCancel() } catch (e) {}
-    setStatus('idle')
-    setMsg({ type: 'info', text: 'Sign-in cancelled.' })
-  }
-
-  const active = ACTIVE.includes(status)
 
   return (
     <div className="card">
       <h3>Sign in with ESPN</h3>
       <p className="muted" style={{ marginTop: 0 }}>
-        Sync every league on your ESPN/Disney account. A Chrome window opens where you sign in at ESPN —
-        we never see your password. We then save your ESPN session cookies on this device and load your leagues.
+        Sign in with your ESPN/Disney username and password to load every league on your account.
+        Your password is used once to authenticate with ESPN and is never stored.
       </p>
-
-      {!active && status !== 'done' && (
-        <button className="primary" style={{ width: '100%' }} onClick={start}>
-          {status === 'error' || status === 'expired' || status === 'cancelled' ? 'Try again' : 'Sign in with ESPN'}
+      <div className="row">
+        <input
+          placeholder="ESPN email or username"
+          autoComplete="username"
+          value={username}
+          disabled={busy}
+          onChange={(e) => setUsername(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') submit() }}
+        />
+      </div>
+      <div className="row" style={{ marginTop: 8 }}>
+        <input
+          type="password"
+          placeholder="Password"
+          autoComplete="current-password"
+          value={password}
+          disabled={busy}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') submit() }}
+        />
+      </div>
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="primary" style={{ width: '100%' }} disabled={busy || !username.trim() || !password} onClick={submit}>
+          {busy ? 'Signing in…' : done ? 'Sign in again' : 'Sign in'}
         </button>
-      )}
-
-      {active && (
-        <div>
-          <div className="row" style={{ alignItems: 'center' }}>
-            <span className="spinner" />
-            <span className="grow">
-              {status === 'waiting_login' ? 'Waiting for you to finish signing in…' : 'Working…'}
-            </span>
-            <button className="ghost" onClick={cancel}>Cancel</button>
-          </div>
-          <div className="muted" style={{ marginTop: 6 }}>
-            Complete the ESPN/Disney login in the Chrome window that just opened. This panel updates on its own.
-          </div>
-        </div>
-      )}
+      </div>
 
       {msg && <div className={'msg ' + msg.type}>{msg.text}</div>}
 
-      {status === 'done' && leagues.length > 0 && (
+      {done && leagues.length > 0 && (
         <div className="list" style={{ marginTop: 8 }}>
           {leagues.map((l) => (
             <div className="league" key={l.id}>
@@ -99,12 +87,6 @@ export default function SignIn({ onDone }) {
             </div>
           ))}
         </div>
-      )}
-
-      {status === 'done' && (
-        <button className="ghost" style={{ marginTop: 8 }} onClick={() => { setStatus('idle'); setMsg(null); setLeagues([]) }}>
-          Sign in again
-        </button>
       )}
     </div>
   )

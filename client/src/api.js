@@ -24,9 +24,7 @@ export const api = {
   clearEspnCreds: () => del('/espn/credentials'),
   authStart: () => get('/auth/espn/start'),
   authVerify: (swid, espnS2, input) => post('/auth/espn/verify', { swid, espnS2, input }),
-  authBrowserStart: () => post('/auth/espn/browser/start'),
-  authBrowserStatus: (session) => get('/auth/espn/browser/status' + (session ? ('?session=' + encodeURIComponent(session)) : '')),
-  authBrowserCancel: () => post('/auth/espn/browser/cancel'),
+  authLogin: (username, password) => post('/auth/espn/login', { username, password }),
   leagueBasics: (id, season) => get('/espn/league/' + id + '/basics' + (season ? ('?season=' + season) : '')),
 
   // Feature stubs (wired, real data lands as engines are rebuilt)
