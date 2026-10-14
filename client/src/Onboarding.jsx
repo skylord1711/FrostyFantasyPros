@@ -33,8 +33,8 @@ export default function Onboarding({ onFinish, onLeaguesChange }) {
       <div className="progress"><span className="on" /><span className="on" /><span /></div>
       <div className="big">Connect with ESPN</div>
       <p className="muted">
-        Sign in with your ESPN/Disney account to sync every league you're in. A Chrome window opens for you
-        to sign in at ESPN — we never see your password, only the session it creates.
+        Sign in with your ESPN/Disney username and password to sync every league you're in. Your password is
+        used once to authenticate with ESPN and is never stored.
       </p>
       <SignIn onDone={onSignedIn} />
       <div className="row" style={{ marginTop: 12 }}>

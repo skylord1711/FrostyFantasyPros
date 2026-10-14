@@ -1,4 +1,12 @@
-export function buildLearnerContext(learner?: any) {
-  if (learner) return learner
-  return { level: 'a1', recentMistakes: [], dueItems: 0 }
+export interface LearnerContext {
+  level?: string
+  league?: string
+}
+
+/** The tutor is stateless; this is the neutral context injected when a caller sends none. */
+export function buildLearnerContext(learner?: LearnerContext) {
+  return {
+    level: learner?.level ?? 'mixed',
+    league: learner?.league ?? null
+  }
 }

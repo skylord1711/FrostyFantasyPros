@@ -612,6 +612,42 @@ stored account returned decrypt_failed (=> it reads the stored account + runs th
 ONLY UNKNOWN: the real ESPN/Disney login from Vercel's datacenter IP (may hit ESPN captcha) — untestable
 without the user's real credentials; login works from a home IP. No local requirement anymore.
 
+===== ROUND: TypeScript cleanup + dead-code removal + real type checking =====
+USER DIRECTIVE: make everything cleaner, the TS looks ugly, and check everything.
+DIAGNOSIS: the repo was repurposed from a language-tutor app and had a lot of cruft:
+- NO tsconfig at all (so nothing was type-checked) and `any` on every router signature.
+- A duplicate, unused `server/src/ai-clean/` (full copy of `ai/`) and a stray dead
+  `client/src/ai-index.ts` (imported providers that don't exist in the client).
+- Empty `server/src/sleeper.ts`; placeholder routers `nfl.ts`/`matchups.ts`/`features.ts`.
+- Legacy `server/src/auth-espn.ts` (start/callback/verify/complete/leagues) + the `/api/espn/login`
+  400 stub + `/api/espn/credentials` endpoints — all from the old cookies/URL flow, now unreachable.
+- Backups/logs: `teams.ts.bak`, `server.log`.
+- REAL BUGS the type checker exposed: `AiCompletionResult` declares {text,inputTokens,outputTokens,
+  latencyMs,degraded} but openai-compatible + offline providers returned {content,usage} and omitted
+  isConfigured; and index.ts read `result.content` (always undefined) for /api/ai/tutor — the AI
+  endpoint was silently returning an empty answer. Also leftover language-tutor concepts (level 'a1',
+  apFocus, examDate, Spanish) in ai/prompts.ts + ai/memory.ts.
+DID:
+- Added server/tsconfig.json (strict, noUnusedLocals/Parameters, verbatimModuleSyntax,
+  moduleResolution bundler) + devDeps typescript/@types/node/@types/express@4/@types/cors. Root scripts:
+  `typecheck` (tsc -p server/tsconfig.json) and `check` (typecheck + build).
+- New server/src/types.ts (App/Req/Res, EspnCreds, HeaderCarrier + Express Request augmentation for
+  ffpSwid/ffpEspnS2) and server/src/http.ts (errorStatus/sendFetchError helpers).
+- Retyped every router; removed all `app:any`/`req:any`/`res:any`. Remaining `any` is ONLY for raw
+  external ESPN/Disney JSON.
+- Fixed the AI module: providers now return the correct shape + isConfigured; index.ts uses result.text;
+  prompts/memory rewritten to be fantasy-football (no tutor/AP residue), single-quote/no-semicolon style.
+- Deleted: ai-clean/, client ai-index.ts, sleeper.ts, auth-espn.ts, nfl.ts, matchups.ts, features.ts
+  (consolidated -> stubs.ts), teams.ts.bak, server.log. Removed /api/espn/login stub + credential routes.
+- Client: api.js pruned to live endpoints (removed espnCreds/authStart/authVerify/etc.), Onboarding copy
+  fixed (no more "Chrome window opens"), removed unused App `auth` state + session buildLink/clearDeviceAuth.
+VERIFIED: `npm run typecheck` clean (was previously impossible/no config); `npm run build` green
+(server 40.2kb + client PWA). Live: /health 200; login fake creds -> 401 bad_credentials; /events
+{events:[]}; /sync no auth -> 400; /cron/sync -> synced:0; resolve/basics/teams 1833022 -> BAFFFL Midland
+(10 teams); /matchups,/wdis stubs 200; seeded-account diff still detects 11 new teams; /api/ai/tutor now
+returns a real answer (offline fallback) instead of undefined. Committed + redeployed.
+
+
 
 
 

@@ -1,14 +1,12 @@
-/**
- * OpenAI-compatible provider (Groq, Gemini, OpenAI)
- */
 import {
   AiProviderError,
   isRetryableStatus,
   type AiCompletionRequest,
   type AiCompletionResult,
-  type AiProvider,
+  type AiProvider
 } from '../types.js'
 
+/** Shared provider for OpenAI-compatible chat APIs (Groq, Gemini, OpenAI). */
 export interface OpenAiCompatibleConfig {
   id: string
   label: string
@@ -21,7 +19,6 @@ export interface OpenAiCompatibleConfig {
 interface ChatCompletionResponse {
   choices?: { message?: { content?: string | null } }[]
   usage?: { prompt_tokens?: number; completion_tokens?: number }
-  error?: { message?: string }
 }
 
 export function openAiCompatibleProvider(cfg: OpenAiCompatibleConfig): AiProvider {
@@ -29,36 +26,49 @@ export function openAiCompatibleProvider(cfg: OpenAiCompatibleConfig): AiProvide
     id: cfg.id,
     label: cfg.label,
     model: cfg.model,
+    isConfigured: () => cfg.apiKey.trim().length > 0,
     async complete(req: AiCompletionRequest): Promise<AiCompletionResult> {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + cfg.apiKey,
-        ...(cfg.headers || {}),
+      const model = req.model ?? cfg.model
+      const started = Date.now()
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), req.timeoutMs ?? 30_000)
+      try {
+        const res = await fetch(cfg.baseUrl + '/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + cfg.apiKey,
+            ...(cfg.headers ?? {})
+          },
+          body: JSON.stringify({
+            model,
+            messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
+            temperature: req.temperature ?? 0.7,
+            max_tokens: req.maxTokens ?? 1024
+          }),
+          signal: controller.signal
+        })
+        if (!res.ok) {
+          const body = await res.text().catch(() => '')
+          throw new AiProviderError(cfg.id, body.slice(0, 300) || 'request failed', isRetryableStatus(res.status))
+        }
+        const json = (await res.json()) as ChatCompletionResponse
+        return {
+          text: json.choices?.[0]?.message?.content ?? '',
+          provider: cfg.id,
+          model,
+          inputTokens: json.usage?.prompt_tokens ?? 0,
+          outputTokens: json.usage?.completion_tokens ?? 0,
+          latencyMs: Date.now() - started,
+          degraded: false
+        }
+      } catch (error) {
+        if (error instanceof AiProviderError) throw error
+        const message = error instanceof Error && error.name === 'AbortError' ? cfg.label + ' timed out' : String(error)
+        throw new AiProviderError(cfg.id, message)
+      } finally {
+        clearTimeout(timeout)
       }
-      const messages = req.messages.map((m) => ({ role: m.role, content: m.content }))
-      const payload = {
-        model: req.model ?? cfg.model,
-        messages,
-        temperature: req.temperature ?? 0.7,
-        max_tokens: req.maxTokens ?? 1024,
-      }
-      const res = await fetch(cfg.baseUrl + '/chat/completions', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const text = await res.text().catch(() => '')
-        throw new AiProviderError(text || 'request failed', res.status, isRetryableStatus(res.status))
-      }
-      const json = (await res.json()) as ChatCompletionResponse
-      const content = json.choices?.[0]?.message?.content ?? ''
-      return {
-        content,
-        provider: cfg.id,
-        model: payload.model,
-        usage: json.usage,
-      }
-    },
+    }
   }
 }

@@ -1,7 +1,7 @@
 import React from 'react'
 import { api } from './api.js'
 import {
-  getDeviceAuth, hasDeviceAuth,
+  hasDeviceAuth,
   getLeagues, removeLeague,
   isOnboarded
 } from './session.js'
@@ -15,7 +15,6 @@ export default function App() {
   const [tab, setTab] = React.useState('Leagues')
   const [leagues, setLeaguesState] = React.useState(getLeagues())
   const [activeId, setActiveId] = React.useState((getLeagues()[0] || {}).id || '')
-  const [auth, setAuth] = React.useState(getDeviceAuth())
 
   // data state
   const [basics, setBasics] = React.useState(null)
@@ -71,7 +70,6 @@ export default function App() {
   }, [activeId, activeLeague?.season])
 
   const onSignedIn = (list) => {
-    setAuth(getDeviceAuth())
     refreshLeagues()
     if (list && list[0]) setActiveId(String(list[0].id))
     runSync(true)

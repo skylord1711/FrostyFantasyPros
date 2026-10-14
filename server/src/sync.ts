@@ -1,7 +1,8 @@
-import { discoverLeagues } from './disney.js'
-import { fetchLeagueBasics, getESPN, currentSeason } from './core.js'
-import { kvGet, kvSet } from './store.js'
+import { discoverLeagues, type LeagueRef } from './disney.js'
+import { fetchLeagueBasics, resolveLeague, getESPN, currentSeason } from './core.js'
+import { kvGet, kvSet, kvDelete } from './store.js'
 import { encrypt, decrypt } from './crypto.js'
+import type { App, EspnCreds, HeaderCarrier, Req, Res } from './types.js'
 
 const EVENTS_CAP = 300
 
@@ -15,39 +16,77 @@ export interface FfpEvent {
   at: number
 }
 
-function evKey(swid: string) { return 'ffp:events:' + swid }
-function acctKey(swid: string) { return 'ffp:account:' + swid }
+interface LeagueSnapshot {
+  teamIds: string[]
+  tradeKeys: string[]
+}
 
-export async function saveAccount(swid: string, espnS2: string, leagues: any[]) {
+interface Account {
+  swid: string
+  s2: string
+  createdAt: number
+  updatedAt: number
+  lastSync: number | null
+  snapshot: Record<string, LeagueSnapshot> | null
+  leagues: LeagueRef[]
+}
+
+const acctKey = (swid: string) => 'ffp:account:' + swid
+const evKey = (swid: string) => 'ffp:events:' + swid
+
+/** Resolves device/HTTP creds into a synthetic request the ESPN fetchers accept. */
+function credReq(creds: EspnCreds): HeaderCarrier {
+  return { headers: { 'x-fantasy-swid': creds.swid, 'x-fantasy-espn-s2': creds.espnS2 } }
+}
+
+export async function saveAccount(swid: string, espnS2: string, leagues: LeagueRef[]): Promise<void> {
   if (!swid) return
-  const existing = await kvGet<any>(acctKey(swid))
-  const acct = {
+  const existing = await kvGet<Account>(acctKey(swid))
+  const account: Account = {
     swid,
     s2: encrypt(espnS2),
-    createdAt: existing ? existing.createdAt : Date.now(),
+    createdAt: existing?.createdAt ?? Date.now(),
     updatedAt: Date.now(),
-    lastSync: existing ? existing.lastSync : null,
-    snapshot: existing ? existing.snapshot : null,
-    leagues: leagues && leagues.length ? leagues : (existing ? existing.leagues : [])
+    lastSync: existing?.lastSync ?? null,
+    snapshot: existing?.snapshot ?? null,
+    leagues: leagues.length ? leagues : (existing?.leagues ?? [])
   }
-  await kvSet(acctKey(swid), acct)
-  const idx = (await kvGet<string[]>('ffp:accounts')) || []
-  if (!idx.includes(swid)) {
-    idx.push(swid)
-    await kvSet('ffp:accounts', idx)
+  await kvSet(acctKey(swid), account)
+  const index = (await kvGet<string[]>('ffp:accounts')) ?? []
+  if (!index.includes(swid)) {
+    index.push(swid)
+    await kvSet('ffp:accounts', index)
   }
 }
 
-export async function getAccount(swid: string) {
-  return kvGet<any>(acctKey(swid))
+export async function getAccount(swid: string): Promise<Account | null> {
+  return kvGet<Account>(acctKey(swid))
 }
 
 export async function getEvents(swid: string): Promise<FfpEvent[]> {
-  return (await kvGet<FfpEvent[]>(evKey(swid))) || []
+  return (await kvGet<FfpEvent[]>(evKey(swid))) ?? []
 }
 
-function credReq(swid: string, s2: string) {
-  return { headers: { 'x-fantasy-swid': swid, 'x-fantasy-espn-s2': s2 } }
+/** Fills in a league's name/team count from ESPN when discovery only gave an id. */
+export async function enrichLeagues(list: LeagueRef[], cred?: EspnCreds): Promise<LeagueRef[]> {
+  const enriched: LeagueRef[] = []
+  for (const league of list) {
+    if (league.teamCount) {
+      enriched.push(league)
+      continue
+    }
+    try {
+      const r = await resolveLeague(league.id, cred ? credReq(cred) : undefined)
+      if (r.ok && 'league' in r) {
+        enriched.push({ id: String(r.league.id), name: r.league.name, season: r.league.season, teamCount: r.league.teamCount })
+      } else {
+        enriched.push(league)
+      }
+    } catch {
+      enriched.push(league)
+    }
+  }
+  return enriched
 }
 
 function feedItems(json: any): any[] {
@@ -59,59 +98,87 @@ function feedItems(json: any): any[] {
   return []
 }
 
-function tradeSummary(it: any): string {
-  if (Array.isArray(it.messages) && it.messages.length) {
-    return it.messages.map((m: any) => (typeof m === 'string' ? m : (m && m.message) || '')).filter(Boolean).join(' ')
+function tradeSummary(item: any): string {
+  if (Array.isArray(item.messages) && item.messages.length) {
+    return item.messages
+      .map((m: any) => (typeof m === 'string' ? m : m?.message || ''))
+      .filter(Boolean)
+      .join(' ')
   }
-  if (it.message) return String(it.message)
-  const t = String(it.type || 'TRADE')
-  return t.replace(/_/g, ' ').toLowerCase()
+  if (item.message) return String(item.message)
+  return String(item.type || 'TRADE').replace(/_/g, ' ').toLowerCase()
 }
 
-export async function syncAccount(swid: string, opts: { refreshLeagues?: boolean } = {}) {
-  const acct = await getAccount(swid)
-  if (!acct) return { ok: false, error: 'no_account' as const }
-  let s2: string
-  try { s2 = decrypt(acct.s2) } catch (e) { return { ok: false, error: 'decrypt_failed' as const } }
-  const req = credReq(swid, s2)
+export interface SyncResult {
+  ok: boolean
+  error?: string
+  newEvents?: FfpEvent[]
+  total?: number
+  leagues?: number
+  firstRun?: boolean
+}
 
-  let leagues: any[] = acct.leagues || []
-  if ((!leagues.length || opts.refreshLeagues)) {
+export async function syncAccount(swid: string, opts: { refreshLeagues?: boolean } = {}): Promise<SyncResult> {
+  const account = await getAccount(swid)
+  if (!account) return { ok: false, error: 'no_account' }
+
+  let s2: string
+  try {
+    s2 = decrypt(account.s2)
+  } catch {
+    return { ok: false, error: 'decrypt_failed' }
+  }
+  const creds: EspnCreds = { swid, espnS2: s2 }
+  const req = credReq(creds)
+
+  let leagues = account.leagues ?? []
+  if (!leagues.length || opts.refreshLeagues) {
     try {
-      const found = await discoverLeagues({ swid, espnS2: s2 })
+      const found = await discoverLeagues(creds)
       if (found.length) leagues = found
-    } catch (e) {}
+    } catch {
+      // keep the leagues we already have
+    }
   }
 
-  const firstRun = !acct.snapshot
-  const snap: Record<string, any> = acct.snapshot || {}
+  const firstRun = !account.snapshot
+  const snapshot: Record<string, LeagueSnapshot> = account.snapshot ?? {}
   const events = await getEvents(swid)
   const fresh: FfpEvent[] = []
+  const now = Date.now()
 
-  for (const lg of leagues) {
-    const season = lg.season || currentSeason()
-    let teamIds: string[] = []
+  for (const league of leagues) {
+    const season = league.season ?? currentSeason()
+    const teamIds: string[] = []
     const teamNameById: Record<string, string> = {}
+
     try {
-      const basics = await fetchLeagueBasics(lg.id, season, req)
-      if (basics.ok && basics.league) {
-        teamIds = (basics.league.teams || []).map((t: any) => String(t.id))
-        for (const t of basics.league.teams || []) teamNameById[String(t.id)] = t.name
+      const basics = await fetchLeagueBasics(league.id, season, req)
+      if (basics.ok) {
+        for (const team of basics.league.teams) {
+          const id = String(team.id)
+          teamIds.push(id)
+          teamNameById[id] = team.name
+        }
       }
-    } catch (e) {}
+    } catch {
+      // treat as no data this round
+    }
 
-    const prev = snap[lg.id] || { teamIds: [], tradeKeys: [] }
+    const prev = snapshot[league.id] ?? { teamIds: [], tradeKeys: [] }
+    const leagueName = league.name || 'League ' + league.id
+    const isNewLeague = !snapshot[league.id]
 
-    if (!firstRun && prev.teamIds) {
+    if (!firstRun && !isNewLeague) {
       for (const id of teamIds) {
         if (!prev.teamIds.includes(id)) {
           fresh.push({
-            id: 'nt:' + lg.id + ':' + id,
+            id: 'nt:' + league.id + ':' + id,
             type: 'new_team',
-            leagueId: String(lg.id),
-            leagueName: lg.name || ('League ' + lg.id),
-            summary: (teamNameById[id] || 'A new team') + ' joined ' + (lg.name || ('league ' + lg.id)),
-            at: Date.now()
+            leagueId: String(league.id),
+            leagueName,
+            summary: (teamNameById[id] || 'A new team') + ' joined ' + leagueName,
+            at: now
           })
         }
       }
@@ -119,89 +186,85 @@ export async function syncAccount(swid: string, opts: { refreshLeagues?: boolean
 
     const tradeKeys: string[] = []
     try {
-      const feed = await getESPN('/lg/' + lg.id + '/activity/feed?view=kona_activity_feed', req)
-      const items = feedItems(feed.json)
-      const seen = new Set(prev.tradeKeys || [])
-      for (const it of items) {
-        const type = String(it.type || it.activityType || '')
+      const feed = await getESPN('/lg/' + league.id + '/activity/feed?view=kona_activity_feed', req)
+      const seen = new Set(prev.tradeKeys)
+      for (const item of feedItems(feed.json)) {
+        const type = String(item.type || item.activityType || '')
         if (type.indexOf('TRADE') === -1) continue
-        const rawId = it.id != null ? it.id : (it.relatedTransactionId != null ? it.relatedTransactionId : '')
-        const key = 't:' + rawId + ':' + (it.date || '')
-        if (tradeKeys.indexOf(key) === -1) tradeKeys.push(key)
+        const rawId = item.id ?? item.relatedTransactionId ?? ''
+        const key = 't:' + rawId + ':' + (item.date || '')
+        if (!tradeKeys.includes(key)) tradeKeys.push(key)
         if (!firstRun && !seen.has(key)) {
           fresh.push({
             id: key,
             type: 'trade',
-            leagueId: String(lg.id),
-            leagueName: lg.name || ('League ' + lg.id),
-            summary: tradeSummary(it) || 'A trade was completed',
+            leagueId: String(league.id),
+            leagueName,
+            summary: tradeSummary(item) || 'A trade was completed',
             detail: type,
-            at: typeof it.date === 'string' ? Date.parse(it.date) || Date.now() : (it.date || Date.now())
+            at: typeof item.date === 'string' ? Date.parse(item.date) || now : (item.date || now)
           })
         }
       }
-    } catch (e) {}
+    } catch {
+      // no feed this round
+    }
 
-    if (!prev.teamIds && !firstRun) {
-      // first time we see this league after initial baseline
+    if (!firstRun && isNewLeague) {
       fresh.push({
-        id: 'nl:' + lg.id,
+        id: 'nl:' + league.id,
         type: 'new_league',
-        leagueId: String(lg.id),
-        leagueName: lg.name || ('League ' + lg.id),
-        summary: 'Now tracking ' + (lg.name || ('league ' + lg.id)),
-        at: Date.now()
+        leagueId: String(league.id),
+        leagueName,
+        summary: 'Now tracking ' + leagueName,
+        at: now
       })
     }
 
-    snap[lg.id] = { teamIds, tradeKeys }
+    snapshot[league.id] = { teamIds, tradeKeys }
   }
 
-  const merged = fresh.concat(events).slice(0, EVENTS_CAP)
+  const merged = [...fresh, ...events].slice(0, EVENTS_CAP)
   await kvSet(evKey(swid), merged)
 
-  acct.lastSync = Date.now()
-  acct.snapshot = snap
-  acct.leagues = leagues
-  acct.updatedAt = Date.now()
-  await kvSet(acctKey(swid), acct)
+  account.lastSync = now
+  account.snapshot = snapshot
+  account.leagues = leagues
+  account.updatedAt = now
+  await kvSet(acctKey(swid), account)
 
-  return { ok: true as const, newEvents: fresh, total: merged.length, leagues: leagues.length, firstRun }
+  return { ok: true, newEvents: fresh, total: merged.length, leagues: leagues.length, firstRun }
 }
 
 export async function syncAll() {
-  const idx = (await kvGet<string[]>('ffp:accounts')) || []
-  const results: any[] = []
-  for (const swid of idx) {
+  const index = (await kvGet<string[]>('ffp:accounts')) ?? []
+  const results: { swid: string; ok: boolean; newEvents?: number; error?: string }[] = []
+  for (const swid of index) {
     try {
       const r = await syncAccount(swid)
-      results.push({ swid, ok: r.ok, newEvents: (r as any).newEvents ? (r as any).newEvents.length : 0 })
-    } catch (e: any) {
-      results.push({ swid, ok: false, error: e.message })
+      results.push({ swid, ok: r.ok, newEvents: r.newEvents?.length ?? 0, error: r.error })
+    } catch (error) {
+      results.push({ swid, ok: false, error: error instanceof Error ? error.message : String(error) })
     }
   }
   return results
 }
 
-function isAuthed(req: any): boolean {
+function isCronAuthorized(req: Req): boolean {
   const secret = process.env.CRON_SECRET
   if (!secret) return true
-  const auth = req.headers['authorization'] || ''
-  if (auth === 'Bearer ' + secret) return true
-  if (req.query && req.query.key === secret) return true
-  return false
+  if (req.headers.authorization === 'Bearer ' + secret) return true
+  return req.query.key === secret
 }
 
-export async function syncRouter(app: any) {
-  // Vercel Cron hits this. Also callable manually with the CRON_SECRET.
-  app.get('/api/cron/sync', async (req: any, res: any) => {
-    if (!isAuthed(req)) return res.status(401).json({ ok: false, error: 'unauthorized' })
+export function syncRouter(app: App): void {
+  app.get('/api/cron/sync', async (req: Req, res: Res) => {
+    if (!isCronAuthorized(req)) return res.status(401).json({ ok: false, error: 'unauthorized' })
     const results = await syncAll()
     res.json({ ok: true, synced: results.length, results })
   })
 
-  // Client-triggered sync for the signed-in account (uses X-Fantasy headers).
-  app.post('/api/sync', async (req: any, res: any) => {
+  app.post('/api/sync', async (req: Req, res: Res) => {
     const swid = req.ffpSwid
     if (!swid) return res.status(400).json({ ok: false, error: 'not_signed_in' })
     const r = await syncAccount(swid, { refreshLeagues: !!req.body?.refreshLeagues })
@@ -209,22 +272,19 @@ export async function syncRouter(app: any) {
     res.json({ ok: true, newEvents: r.newEvents, total: r.total, leagues: r.leagues })
   })
 
-  app.get('/api/events', async (req: any, res: any) => {
+  app.get('/api/events', async (req: Req, res: Res) => {
     const swid = req.ffpSwid
     if (!swid) return res.json({ ok: true, events: [] })
-    const events = await getEvents(swid)
-    res.json({ ok: true, events })
+    res.json({ ok: true, events: await getEvents(swid) })
   })
 
-  // Clears the tracked account + its events (sign out / wipe).
-  app.delete('/api/account', async (req: any, res: any) => {
+  app.delete('/api/account', async (req: Req, res: Res) => {
     const swid = req.ffpSwid
     if (!swid) return res.json({ ok: true })
-    const { kvDelete } = await import('./store.js')
-    await kvDelete('ffp:account:' + swid)
-    await kvDelete('ffp:events:' + swid)
-    const idx = ((await kvGet<string[]>('ffp:accounts')) || []).filter((s) => s !== swid)
-    await kvSet('ffp:accounts', idx)
+    await kvDelete(acctKey(swid))
+    await kvDelete(evKey(swid))
+    const index = ((await kvGet<string[]>('ffp:accounts')) ?? []).filter((s) => s !== swid)
+    await kvSet('ffp:accounts', index)
     res.json({ ok: true })
   })
 }

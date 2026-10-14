@@ -19,11 +19,6 @@ export const api = {
   tutor: (question, context) => post('/ai/tutor', { question, context }),
 
   // ESPN connection / league sync
-  espnCreds: () => get('/espn/credentials'),
-  setEspnCreds: (swid, espnS2) => post('/espn/credentials', { swid, espnS2 }),
-  clearEspnCreds: () => del('/espn/credentials'),
-  authStart: () => get('/auth/espn/start'),
-  authVerify: (swid, espnS2, input) => post('/auth/espn/verify', { swid, espnS2, input }),
   authLogin: (username, password) => post('/auth/espn/login', { username, password }),
   leagueBasics: (id, season) => get('/espn/league/' + id + '/basics' + (season ? ('?season=' + season) : '')),
 
