@@ -26,5 +26,11 @@ export const api = {
   boxscores: (week) => fetch(BASE + '/boxscores' + (week ? ('?week='+week) : '')).then(r=>r.json()),
   teams: (lid) => fetch(BASE + (lid ? '/teams/'+lid : '/teams')).then(r=>r.json()),
   rosters: (lid) => fetch(BASE + '/rosters/' + lid).then(r=>r.json()),
-  activity: (lid) => fetch(BASE + '/activity/' + lid).then(r=>r.json())
+  activity: (lid) => fetch(BASE + '/activity/' + lid).then(r=>r.json()),
+  authEspnStart: () => fetch(BASE + '/auth/espn/start').then(r=>r.json()),
+  authEspnCallback: (swid, espnS2) => fetch(BASE + '/auth/espn/callback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ swid, espnS2 })
+  }).then(r=>r.json())
 }

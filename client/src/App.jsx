@@ -12,6 +12,7 @@ export default function App() {
   const [creds, setCreds] = React.useState(false)
   const [picks, setPicks] = React.useState(null)
   const [data, setData] = React.useState(null)
+  const [authInfo, setAuthInfo] = React.useState(null)
   const ask = async () => {
     const r = await api.tutor(q, { level: 'mixed' })
     setRes(r.answer || r.error)
@@ -56,6 +57,16 @@ export default function App() {
     const r = await fn(...args)
     setData(r)
   }
+  const startAuth = async () => {
+    const r = await api.authEspnStart()
+    setAuthInfo(r)
+    if (r.redirect) window.open(r.redirect, '_blank')
+  }
+  const completeAuth = async () => {
+    const r = await api.authEspnCallback(swid, espnS2)
+    setCreds(r.ok && r.has)
+    setDeviceAuth({ swid, espnS2 })
+  }
   return (
     <div style={{padding:16,fontFamily:'system-ui'}}>
       <h2>Frosty Fantasy Pros</h2>
@@ -66,9 +77,13 @@ export default function App() {
       </div>
       {tab==='Connect' && (
         <div>
-          <div>Device session (RotoBot-style):</div>
+          <div>Best-apps style: Sign in with ESPN/Disney</div>
+          <button onClick={startAuth} style={{padding:6,marginRight:4}}>Sign in with ESPN/Disney</button>
+          {authInfo && (<pre style={{whiteSpace:'pre-wrap',fontSize:'12px'}}>{JSON.stringify(authInfo,null,2)}</pre>)}
+          <div style={{marginTop:8}}>Or paste SWID + espn_s2 (manual):</div>
           <input placeholder='SWID' value={swid} onChange={e=>setSwid(e.target.value)} style={{width:'40%',padding:6,marginRight:4}}/>
           <input placeholder='ESPN_S2' value={espnS2} onChange={e=>setEspnS2(e.target.value)} style={{width:'40%',padding:6,marginRight:4}}/>
+          <button onClick={completeAuth} style={{padding:6,marginRight:4}}>Complete Login</button>
           <button onClick={save} style={{padding:6,marginRight:4}}>Save</button>
           <button onClick={clear} style={{padding:6,marginRight:4}}>Clear</button>
           <button onClick={gen} style={{padding:6}}>Gen Phone Link</button>

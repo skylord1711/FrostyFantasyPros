@@ -12,6 +12,7 @@ import { matchupsRouter } from './matchups.js'
 import { teamsRouter } from './teams.js'
 import { rostersRouter } from './rosters.js'
 import { activityRouter } from './activity.js'
+import { espnAuthRouter } from './auth-espn.js'
 
 const app = express()
 app.use(cors())
@@ -61,6 +62,7 @@ matchupsRouter(app)
 teamsRouter(app)
 rostersRouter(app)
 activityRouter(app)
+espnAuthRouter(app)
 
 const port = process.env.PORT || 4700
 if (!process.env.VERCEL) {
